@@ -61,7 +61,7 @@ function createScheduler(bot, db) {
   /**
    * 檢查並發送定時提醒
    */
-  const checkAndSendReminders = () => {
+  const checkAndSendReminders = async () => {
     const now = getTaiwanTime();
     const currentHour = String(now.getHours()).padStart(2, '0');
     const currentMinute = String(now.getMinutes()).padStart(2, '0');
