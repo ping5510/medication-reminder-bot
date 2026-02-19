@@ -1,0 +1,18 @@
+{
+  "name": "medication-reminder-bot",
+  "version": "1.0.0",
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  },
+  "start": {
+    "command": "npm start",
+    "timeout": 60
+  },
+  "environment": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "TIMEZONE": "Asia/Taipei"
+  }
+}
