@@ -72,7 +72,7 @@ async function sendReminderMessage(bot, userId, scheduleInfo) {
   const medicinesText = medicines.map((med, index) => `• ${med}`).join('\n');
   
   // 提醒次數文字
-  const retryText = retryCount > 0 ? `\n⚠️ 這是第 ${retryCount} 次提醒` : '';
+  const retryText = retryCount > 0 ? `\n⚠️ 這是第 ${retryCount} 次提醒` : '\u200B'; // 使用零寬空格避免空文字
   
   // 創建 Flex Message
   const flexMessage = {
@@ -122,7 +122,7 @@ async function sendReminderMessage(bot, userId, scheduleInfo) {
           },
           {
             type: 'text',
-            text: retryText,
+            text: retryCount > 0 ? `⚠️ 這是第 ${retryCount} 次提醒` : '',
             size: 'sm',
             color: '#FF6B6B',
             margin: 'md'
