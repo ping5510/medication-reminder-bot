@@ -33,12 +33,6 @@ const MEDICATIONS = {
     mealTypeEn: 'dinner',
     medicines: ['高血壓（中藥）'],
     time: '19:00'
-  },
-  TEST: {
-    mealType: '測試提醒',
-    mealTypeEn: 'test',
-    medicines: ['測試用藥'],
-    time: '21:00'
   }
 };
 
@@ -454,21 +448,12 @@ async function setupDefaultSchedules(userId) {
     ['高血壓（中藥）']
   );
   
-  // 建立測試提醒（21:00）
-  const testSchedule = createSchedule(
-    userId,
-    '測試提醒',
-    '21:00',
-    ['測試用藥']
-  );
-  
   // 立即創建當天的服藥記錄
   const today = new Date().toISOString().split('T')[0];
   createMedicationLog(breakfastFirst.id, userId, today);
   createMedicationLog(breakfastSecond.id, userId, today);
   createMedicationLog(lunchSchedule.id, userId, today);
   createMedicationLog(dinnerSchedule.id, userId, today);
-  createMedicationLog(testSchedule.id, userId, today);
   
   console.log(`✅ 用戶 ${userId} 的排程已建立`);
 }
