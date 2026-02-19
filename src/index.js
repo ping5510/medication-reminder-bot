@@ -81,7 +81,6 @@ app.post('/webhook', (req, res) => {
     });
   }
 });
-});
 
 // 健康檢查端點
 app.get('/', (req, res) => {
