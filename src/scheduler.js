@@ -6,6 +6,22 @@
 const cron = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 
+// 取得台灣時間
+function getTaiwanTime() {
+  const now = new Date();
+  const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  return taiwanTime;
+}
+
+// 取得台灣日期字串
+function getTaiwanDateString() {
+  const taiwanTime = getTaiwanTime();
+  const year = taiwanTime.getFullYear();
+  const month = String(taiwanTime.getMonth() + 1).padStart(2, '0');
+  const day = String(taiwanTime.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * 建立排程器
  */
@@ -20,7 +36,7 @@ function createScheduler(bot, db) {
    */
   const initDailySchedule = () => {
     const users = getAllUsers();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTaiwanDateString();
     
     console.log(`📅 初始化 ${today} 的排程...`);
     
@@ -46,13 +62,13 @@ function createScheduler(bot, db) {
    * 檢查並發送定時提醒
    */
   const checkAndSendReminders = () => {
-    const now = new Date();
-    const currentHour = now.getHours().toString().padStart(2, '0');
-    const currentMinute = now.getMinutes().toString().padStart(2, '0');
+    const now = getTaiwanTime();
+    const currentHour = String(now.getHours()).padStart(2, '0');
+    const currentMinute = String(now.getMinutes()).padStart(2, '0');
     const currentTime = `${currentHour}:${currentMinute}`;
     
     const users = getAllUsers();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTaiwanDateString();
     
     console.log(`🔍 檢查 ${currentTime} 的提醒...`);
     
@@ -89,8 +105,9 @@ function createScheduler(bot, db) {
             sendReminderMessage(bot, user.line_user_id, scheduleInfo);
             
             // 更新提醒時間
+            const taiwanTimeStr = getTaiwanTime().toISOString();
             updateMedicationLogStatus(log.id, log.status, {
-              lastRemindedAt: now.toISOString()
+              lastRemindedAt: taiwanTimeStr
             });
           }
         }
@@ -103,8 +120,8 @@ function createScheduler(bot, db) {
    * 每 5 分鐘執行一次，檢查是否需要重試
    */
   const checkRetryNeeded = async () => {
-    const now = new Date();
-    const today = new Date().toISOString().split('T')[0];
+    const now = getTaiwanTime();
+    const today = getTaiwanDateString();
     
     // 取得所有 PENDING 或 SNOOZED 的記錄
     const pendingLogs = getPendingLogsForDate(today);
