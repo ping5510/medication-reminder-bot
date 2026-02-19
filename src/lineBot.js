@@ -386,11 +386,10 @@ async function setupDefaultSchedules(userId) {
   // 動態獲取數據庫模組
   const { getDb } = require('./database');
   const db = getDb();
-  const { createSchedule, getSchedulesByUserId } = db;
+  const { createSchedule, getSchedulesByUserId, createMedicationLog } = db;
   
   // 清除現有排程
   const existingSchedules = getSchedulesByUserId(userId);
-  // 這裡可以添加清除邏輯
   
   // 建立早餐第一劑（西藥）
   const breakfastFirst = createSchedule(
@@ -411,7 +410,7 @@ async function setupDefaultSchedules(userId) {
   );
   
   // 建立午餐提醒（中藥）
-  createSchedule(
+  const lunchSchedule = createSchedule(
     userId,
     '午餐後',
     '13:00',
@@ -419,12 +418,19 @@ async function setupDefaultSchedules(userId) {
   );
   
   // 建立晚餐提醒（中藥）
-  createSchedule(
+  const dinnerSchedule = createSchedule(
     userId,
     '晚餐後',
     '19:00',
     ['高血壓（中藥）']
   );
+  
+  // 立即創建當天的服藥記錄
+  const today = new Date().toISOString().split('T')[0];
+  createMedicationLog(breakfastFirst.id, userId, today);
+  createMedicationLog(breakfastSecond.id, userId, today);
+  createMedicationLog(lunchSchedule.id, userId, today);
+  createMedicationLog(dinnerSchedule.id, userId, today);
   
   console.log(`✅ 用戶 ${userId} 的排程已建立`);
 }
