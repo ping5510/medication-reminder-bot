@@ -71,8 +71,34 @@ async function sendReminderMessage(bot, userId, scheduleInfo) {
   // 藥品清單文字
   const medicinesText = medicines.map((med, index) => `• ${med}`).join('\n');
   
-  // 提醒次數文字
-  const retryText = retryCount > 0 ? `\n⚠️ 這是第 ${retryCount} 次提醒` : '\u200B'; // 使用零寬空格避免空文字
+  // 建立 body 內容
+  const bodyContents = [
+    {
+      type: 'text',
+      text: `請記得服用：`,
+      weight: 'bold',
+      size: 'md',
+      margin: 'md'
+    },
+    {
+      type: 'text',
+      text: medicinesText,
+      size: 'md',
+      margin: 'sm',
+      wrap: true
+    }
+  ];
+  
+  // 只有重試時才添加提醒文字
+  if (retryCount > 0) {
+    bodyContents.push({
+      type: 'text',
+      text: `⚠️ 這是第 ${retryCount} 次提醒`,
+      size: 'sm',
+      color: '#FF6B6B',
+      margin: 'md'
+    });
+  }
   
   // 創建 Flex Message
   const flexMessage = {
@@ -105,29 +131,7 @@ async function sendReminderMessage(bot, userId, scheduleInfo) {
       body: {
         type: 'box',
         layout: 'vertical',
-        contents: [
-          {
-            type: 'text',
-            text: `請記得服用：`,
-            weight: 'bold',
-            size: 'md',
-            margin: 'md'
-          },
-          {
-            type: 'text',
-            text: medicinesText,
-            size: 'md',
-            margin: 'sm',
-            wrap: true
-          },
-          {
-            type: 'text',
-            text: retryCount > 0 ? `⚠️ 這是第 ${retryCount} 次提醒` : '',
-            size: 'sm',
-            color: '#FF6B6B',
-            margin: 'md'
-          }
-        ],
+        contents: bodyContents,
         paddingAll: 'lg'
       },
       footer: {
