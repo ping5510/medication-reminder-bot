@@ -134,6 +134,34 @@ app.post('/trigger-reminder', async (req, res) => {
   res.json({ success: true, message: '提醒已發送' });
 });
 
+// 簡單測試推播訊息
+app.post('/test-push', async (req, res) => {
+  if (!bot) {
+    return res.status(503).json({ error: 'LINE Bot 未設定' });
+  }
+  
+  const { userId, message } = req.body;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '缺少 userId' });
+  }
+  
+  const testMessage = message || '這是測試訊息！';
+  
+  try {
+    console.log(`🧪 測試推播給 ${userId}: ${testMessage}`);
+    await bot.push(userId, {
+      type: 'text',
+      text: testMessage
+    });
+    console.log(`✅ 測試推播成功`);
+    res.json({ success: true, message: '測試訊息已發送' });
+  } catch (error) {
+    console.error(`❌ 測試推播失敗:`, error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 設定用戶排程（開發/測試用）
 app.post('/setup-user', async (req, res) => {
   const { userId, displayName } = req.body;
