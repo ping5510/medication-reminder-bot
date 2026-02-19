@@ -161,11 +161,17 @@ async function sendReminderMessage(bot, userId, scheduleInfo) {
   };
 
   try {
-    await bot.push(userId, flexMessage);
+    console.log(`📤 正在發送提醒給 ${userId}...`);
+    const result = await bot.push(userId, flexMessage);
+    console.log(`📬 LINE API 回應:`, JSON.stringify(result));
     console.log(`✅ 提醒訊息已發送給 ${userId} - ${mealType}`);
-return true;
+    return true;
   } catch (error) {
     console.error('❌ 發送提醒訊息失敗:', error);
+    console.error('錯誤詳情:', error.message);
+    if (error.response) {
+      console.error('LINE API 錯誤回應:', error.response.data);
+    }
     return false;
   }
 }
@@ -359,10 +365,23 @@ async function handleWebhookEvent(bot, event, db) {
       
       await sendTextMessage(bot, userId, statusText);
     }
+    else if (messageText === '測試' || messageText === '/test') {
+      // 發送測試訊息
+      await sendTextMessage(bot, userId, '🧪 正在發送測試訊息...');
+      await sendReminderMessage(bot, userId, {
+        mealType: '測試提醒',
+        medicines: ['這是測試用藥'],
+        scheduleId: 'test-' + Date.now(),
+        retryCount: 0,
+        isSecondDose: false
+      });
+      await sendTextMessage(bot, userId, '✅ 測試訊息已發送！請檢查是否有收到 Flex Message。');
+    }
     else if (messageText === '說明' || messageText === '/help') {
       await sendTextMessage(bot, userId, `📖 吃藥提醒機器人使用說明：
 
 🤖 可用指令：
+• 測試 - 發送測試訊息
 • 設定提醒 - 設定每日提醒排程
 • 查詢提醒 - 查看今日服藥狀態
 • 說明 - 顯示此說明
