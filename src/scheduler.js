@@ -102,7 +102,8 @@ function createScheduler(bot, db) {
               isSecondDose: schedule.is_second_dose
             };
             
-            sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+            // 使用 await 等待發送完成
+            await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
             
             // 更新提醒時間
             const taiwanTimeStr = getTaiwanTime().toISOString();
