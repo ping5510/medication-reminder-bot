@@ -9,7 +9,7 @@
 
 require('dotenv').config();
 const express = require('express');
-const line = require('linebot');
+const linebot = require('linebot');
 
 const { initDatabase, getDb } = require('./database');
 const { createBot, handleWebhookEvent } = require('./lineBot');
@@ -18,6 +18,10 @@ const { createScheduler } = require('./scheduler');
 // 初始化
 const app = express();
 const port = process.env.PORT || 3000;
+
+// 中間件
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // 初始化資料庫
 let db;
@@ -34,7 +38,11 @@ const dbOps = db;
 // 初始化 LINE Bot
 let bot;
 try {
-  bot = createBot();
+  bot = linebot({
+    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+    channelSecret: process.env.LINE_CHANNEL_SECRET
+  });
+  console.log('✅ LINE Bot 初始化成功');
 } catch (error) {
   console.error('❌ LINE Bot 初始化失敗:', error.message);
   console.log('⚠️ 伺服器將以有限功能啟動（Webhook 接收模式）');
@@ -48,12 +56,23 @@ if (bot) {
 }
 
 // LINE Webhook 端點
-app.post('/webhook', line.middleware({
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-}), (req, res) => {
+app.post('/webhook', (req, res) => {
   // 必須回傳 200 OK
   res.status(200).send('OK');
+  
+  if (!bot) {
+    console.error('❌ Bot 未初始化');
+    return;
+  }
+  
+  // 驗證 LINE Signature
+  const signature = req.headers['x-line-signature'];
+  const body = JSON.stringify(req.body);
+  
+  if (!bot.validateSignature(body, signature)) {
+    console.error('❌ LINE Signature 驗證失敗');
+    return;
+  }
   
   // 處理每個事件
   Promise.all(req.body.events.map(event => {
@@ -188,7 +207,7 @@ app.listen(port, () => {
 ╠═══════════════════════════════════════════════════╣
 ║  Port: ${port}                                       ║
 ║  Timezone: ${process.env.TIMEZONE || 'Asia/Taipei'}                        ║
-║  Database: ${process.env.DATABASE_PATH || './data/medication.db'}            ║
+║  Database: JSON file storage                         ║
 ╠═══════════════════════════════════════════════════╣
 ║  Webhook URL: /webhook                            ║
 ║  Health Check: /health                            ║
