@@ -65,25 +65,22 @@ app.post('/webhook', (req, res) => {
     return;
   }
   
-  // 驗證 LINE Signature
-  const signature = req.headers['x-line-signature'];
-  const body = JSON.stringify(req.body);
-  
-  if (!bot.validateSignature(body, signature)) {
-    console.error('❌ LINE Signature 驗證失敗');
-    return;
-  }
+  // 使用 linebot 的 parser 處理事件
+  bot.parse(req.body);
   
   // 處理每個事件
-  Promise.all(req.body.events.map(event => {
-    return handleWebhookEvent(bot, event, dbOps);
-  }))
-  .then(results => {
-    console.log('📥 事件處理完成:', results.length, '個事件');
-  })
-  .catch(err => {
-    console.error('❌ 事件處理錯誤:', err);
-  });
+  if (req.body && req.body.events) {
+    Promise.all(req.body.events.map(event => {
+      return handleWebhookEvent(bot, event, dbOps);
+    }))
+    .then(results => {
+      console.log('📥 事件處理完成:', results.length, '個事件');
+    })
+    .catch(err => {
+      console.error('❌ 事件處理錯誤:', err);
+    });
+  }
+});
 });
 
 // 健康檢查端點
