@@ -184,13 +184,13 @@ function createScheduler(bot, db) {
     });
     
     // 每分鐘檢查是否需要發送提醒
-    cron.schedule('* * * * *', () => {
-      checkAndSendReminders();
+    cron.schedule('* * * * *', async () => {
+      await checkAndSendReminders();
     });
     
     // 每 5 分鐘檢查是否需要重試
-    cron.schedule('*/5 * * * *', () => {
-      checkRetryNeeded();
+    cron.schedule('*/5 * * * *', async () => {
+      await checkRetryNeeded();
     });
     
     console.log('✅ 所有排程任務已啟動');
