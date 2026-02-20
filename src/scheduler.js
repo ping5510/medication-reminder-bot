@@ -162,85 +162,85 @@ function createScheduler(bot, db) {
     // ==================== 早餐（西藥）===================
     // 08:00 - 第1次提醒
     cron.schedule('0 8 * * *', () => {
-      sendReminderForMealType('早餐後（西藥）');
+      sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 08:30 - 第2次提醒
     cron.schedule('30 8 * * *', () => {
-      sendReminderForMealType('早餐後（西藥）');
+      sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 09:00 - 第3次提醒
     cron.schedule('0 9 * * *', () => {
-      sendReminderForMealType('早餐後（西藥）');
+      sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 09:30 - 第4次提醒（超過3次）
     cron.schedule('30 9 * * *', () => {
-      sendReminderForMealType('早餐後（西藥）');
+      sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // ==================== 早餐（中藥）===================
     // 09:01 - 第1次提醒（錯開 1 分鐘避開西藥）
     cron.schedule('1 9 * * *', () => {
-      sendReminderForMealType('早餐後（中藥）');
+      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 09:31 - 第2次提醒
     cron.schedule('31 9 * * *', () => {
-      sendReminderForMealType('早餐後（中藥）');
+      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 10:01 - 第3次提醒
     cron.schedule('1 10 * * *', () => {
-      sendReminderForMealType('早餐後（中藥）');
+      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 10:31 - 第4次提醒（超過3次）
     cron.schedule('31 10 * * *', () => {
-      sendReminderForMealType('早餐後（中藥）');
+      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // ==================== 午餐（中藥）===================
     // 13:00 - 第1次提醒
     cron.schedule('0 13 * * *', () => {
-      sendReminderForMealType('午餐後');
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 13:30 - 第2次提醒
     cron.schedule('30 13 * * *', () => {
-      sendReminderForMealType('午餐後');
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 14:00 - 第3次提醒
     cron.schedule('0 14 * * *', () => {
-      sendReminderForMealType('午餐後');
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 14:30 - 第4次提醒（超過3次）
     cron.schedule('30 14 * * *', () => {
-      sendReminderForMealType('午餐後');
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // ==================== 晚餐（中藥）===================
     // 19:00 - 第1次提醒
     cron.schedule('0 19 * * *', () => {
-      sendReminderForMealType('晚餐後');
+      sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 19:30 - 第2次提醒
     cron.schedule('30 19 * * *', () => {
-      sendReminderForMealType('晚餐後');
+      sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 20:00 - 第3次提醒
     cron.schedule('0 20 * * *', () => {
-      sendReminderForMealType('晚餐後');
+      sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     // 20:30 - 第4次提醒（超過3次）
     cron.schedule('30 20 * * *', () => {
-      sendReminderForMealType('晚餐後');
+      sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
     console.log('✅ 所有排程任務已啟動');
