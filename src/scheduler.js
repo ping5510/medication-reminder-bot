@@ -255,6 +255,12 @@ function createScheduler(bot, db) {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
+    // ==================== 測試排程 ====================
+    // 15:35 - 測試午餐提醒（使用 Push API）
+    cron.schedule('35 15 * * *', () => {
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
+    });
+    
     console.log('✅ 所有排程任務已啟動');
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
