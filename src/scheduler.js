@@ -1,10 +1,14 @@
 /**
  * 吃藥提醒 LINE Bot - 排程器模組
  * 負責處理定時提醒任務
+ * 
+ * 設計思路：
+ * - 每個用藥提醒有獨立的 Cron Job
+ * - 每個提醒最多發送 3 次（相隔 30 分鐘）
+ * - 通過檢查狀態決定是否發送（PENDING/SNOOZED 才發送）
  */
 
 const cron = require('node-cron');
-const { v4: uuidv4 } = require('uuid');
 
 // 取得台灣時間
 function getTaiwanTime() {
@@ -26,7 +30,7 @@ function getTaiwanDateString() {
  * 建立排程器
  */
 function createScheduler(bot, db) {
-  const { getAllUsers, getSchedulesByUserId, createMedicationLog, getMedicationLogByScheduleAndDate, updateMedicationLogStatus, getPendingLogsForDate } = db;
+  const { getAllUsers, getSchedulesByUserId, createMedicationLog, getMedicationLogByScheduleAndDate, updateMedicationLogStatus } = db;
   
   console.log('✅ 排程器初始化完成');
   
@@ -59,118 +63,90 @@ function createScheduler(bot, db) {
   };
   
   /**
-   * 檢查並發送定時提醒
+   * 發送用藥提醒（通用函數）
+   * @param {string} mealType - 用藥類型（如「早餐後（西藥）」）
    */
-  const checkAndSendReminders = async () => {
-    const now = getTaiwanTime();
-    const currentHour = String(now.getHours()).padStart(2, '0');
-    const currentMinute = String(now.getMinutes()).padStart(2, '0');
-    const currentTime = `${currentHour}:${currentMinute}`;
-    
+  const sendReminderForMealType = async (mealType) => {
     const users = getAllUsers();
     const today = getTaiwanDateString();
     
-    console.log(`🔍 檢查 ${currentTime} 的提醒...`);
+    console.log(`🔔 檢查 ${mealType} 提醒...`);
     
     for (const user of users) {
+      // 查找對應的排程
       const schedules = getSchedulesByUserId(user.id);
+      const schedule = schedules.find(s => s.meal_type === mealType);
       
-      for (const schedule of schedules) {
-        // 檢查是否為提醒時間
-        if (schedule.default_time === currentTime) {
-          // 檢查服藥記錄
-          const log = getMedicationLogByScheduleAndDate(schedule.id, today);
-          
-          // 只有 PENDING 或 SNOOZED 狀態才發送提醒
-          if (log && (log.status === 'PENDING' || log.status === 'SNOOZED')) {
-            // 如果是早餐第二劑，檢查第一劑是否已服用
-            if (schedule.is_second_dose && schedule.linked_schedule_id) {
-              const firstDoseLog = getMedicationLogByScheduleAndDate(schedule.linked_schedule_id, today);
-              if (!firstDoseLog || firstDoseLog.status !== 'TAKEN') {
-                console.log(`⏭️ 跳過 ${schedule.meal_type}（第一劑尚未服用）`);
-                continue;
-              }
-            }
-            
-            // 發送提醒
-            const { sendReminderMessage } = require('./lineBot');
-            const scheduleInfo = {
-              mealType: schedule.meal_type,
-              medicines: JSON.parse(schedule.medicines),
-              scheduleId: schedule.id,
-              retryCount: log.retry_count || 0,
-              isSecondDose: schedule.is_second_dose
-            };
-            
-            // 使用 await 等待發送完成
-            await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
-            
-            // 更新提醒時間
-            const taiwanTimeStr = getTaiwanTime().toISOString();
-            updateMedicationLogStatus(log.id, log.status, {
-              lastRemindedAt: taiwanTimeStr
-            });
-          }
+      if (!schedule) {
+        console.log(`⚠️ 找不到排程: ${mealType}`);
+        continue;
+      }
+      
+      // 取得服藥記錄
+      const log = getMedicationLogByScheduleAndDate(schedule.id, today);
+      
+      if (!log) {
+        console.log(`⚠️ 找不到服藥記錄: ${mealType}`);
+        continue;
+      }
+      
+      // 檢查狀態
+      if (log.status === 'TAKEN') {
+        console.log(`⏭️ 跳過 ${mealType}（已服用）`);
+        continue;
+      }
+      
+      if (log.status === 'MISSED') {
+        console.log(`⏭️ 跳過 ${mealType}（已標記為未服用）`);
+        continue;
+      }
+      
+      // 如果是早餐第二劑（中藥），檢查第一劑是否已服用
+      if (schedule.is_second_dose && schedule.linked_schedule_id) {
+        const firstDoseLog = getMedicationLogByScheduleAndDate(schedule.linked_schedule_id, today);
+        if (!firstDoseLog || firstDoseLog.status !== 'TAKEN') {
+          console.log(`⏭️ 跳過 ${mealType}（第一劑尚未服用）`);
+          continue;
         }
       }
-    }
-  };
-  
-  /**
-   * 檢查超時未回覆的提醒並重新發送
-   * 每 5 分鐘執行一次，檢查是否需要重試
-   */
-  const checkRetryNeeded = async () => {
-    const now = getTaiwanTime();
-    const today = getTaiwanDateString();
-    
-    // 取得所有 PENDING 或 SNOOZED 的記錄
-    const pendingLogs = getPendingLogsForDate(today);
-    
-    console.log(`🔍 檢查需要重試的記錄，共 ${pendingLogs.length} 條...`);
-    
-    for (const log of pendingLogs) {
-      if (!log.last_reminded_at) continue;
       
-      const lastReminded = new Date(log.last_reminded_at);
-      const minutesDiff = Math.floor((now - lastReminded) / (1000 * 60));
+      // 檢查重試次數
+      const retryCount = log.retry_count || 0;
       
-      // 如果超過 30 分鐘且重試次數少於 3 次
-      if (minutesDiff >= 30 && log.retry_count < 3 && log.status === 'SNOOZED') {
-        const { getScheduleById } = db;
-        const schedule = getScheduleById(log.schedule_id);
-        
-        if (schedule) {
-          const { sendReminderMessage } = require('./lineBot');
-          const newRetryCount = log.retry_count + 1;
-          
-          const scheduleInfo = {
-            mealType: schedule.meal_type,
-            medicines: JSON.parse(schedule.medicines),
-            scheduleId: schedule.id,
-            retryCount: newRetryCount,
-            isSecondDose: schedule.is_second_dose
-          };
-          
-          // 更新重試次數
-          updateMedicationLogStatus(log.id, 'PENDING', {
-            retryCount: newRetryCount,
-            lastRemindedAt: now.toISOString()
+      // 動態獲取 lineBot 模組
+      const { sendReminderMessage, sendTextMessage } = require('./lineBot');
+      
+      if (retryCount >= 3) {
+        // 超過 3 次，發送最終提醒
+        if (log.status !== 'MISSED') {
+          updateMedicationLogStatus(log.id, 'MISSED', {
+            lastRemindedAt: new Date().toISOString()
           });
-          
-          // 發送重試提醒
-          await sendReminderMessage(bot, log.line_user_id, scheduleInfo);
-          console.log(`🔔 重試提醒已發送: ${log.line_user_id} - ${schedule.meal_type} (${newRetryCount}/3)`);
+          await sendTextMessage(bot, user.line_user_id, '⚠️ 已超過最大提醒次數（3次），請記得盡快服用藥物！');
+          console.log(`❌ 標記為未服藥: ${user.line_user_id} - ${mealType}`);
         }
+        continue;
       }
       
-      // 如果超過 90 分鐘（3 次重試後）且仍未回覆，標記為 MISSED
-      if (minutesDiff >= 90 && log.retry_count >= 3 && log.status === 'PENDING') {
-        updateMedicationLogStatus(log.id, 'MISSED', {
-          lastRemindedAt: now.toISOString()
-        });
-        console.log(`❌ 標記為未服藥: ${log.line_user_id} - ${log.meal_type}`);
-      }
+      // 發送提醒
+      const scheduleInfo = {
+        mealType: schedule.meal_type,
+        medicines: JSON.parse(schedule.medicines),
+        scheduleId: schedule.id,
+        retryCount: retryCount,
+        isSecondDose: schedule.is_second_dose
+      };
+      
+      await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+      
+      // 更新狀態為 SNOOZED（表示用戶暫時不想吃）
+      const newRetryCount = retryCount + 1;
+      updateMedicationLogStatus(log.id, 'SNOOZED', {
+        retryCount: newRetryCount,
+        lastRemindedAt: new Date().toISOString()
+      });
+      
+      console.log(`✅ 提醒已發送: ${user.line_user_id} - ${mealType} (${newRetryCount}/3)`);
     }
   };
   
@@ -183,21 +159,97 @@ function createScheduler(bot, db) {
       initDailySchedule();
     });
     
-    // 每分鐘檢查是否需要發送提醒
-    cron.schedule('* * * * *', async () => {
-      await checkAndSendReminders();
+    // ==================== 早餐（西藥）===================
+    // 08:00 - 第1次提醒
+    cron.schedule('0 8 * * *', () => {
+      sendReminderForMealType('早餐後（西藥）');
     });
     
-    // 每 5 分鐘檢查是否需要重試
-    cron.schedule('*/5 * * * *', async () => {
-      await checkRetryNeeded();
+    // 08:30 - 第2次提醒
+    cron.schedule('30 8 * * *', () => {
+      sendReminderForMealType('早餐後（西藥）');
+    });
+    
+    // 09:00 - 第3次提醒
+    cron.schedule('0 9 * * *', () => {
+      sendReminderForMealType('早餐後（西藥）');
+    });
+    
+    // 09:30 - 第4次提醒（超過3次）
+    cron.schedule('30 9 * * *', () => {
+      sendReminderForMealType('早餐後（西藥）');
+    });
+    
+    // ==================== 早餐（中藥）===================
+    // 09:01 - 第1次提醒（錯開 1 分鐘避開西藥）
+    cron.schedule('1 9 * * *', () => {
+      sendReminderForMealType('早餐後（中藥）');
+    });
+    
+    // 09:31 - 第2次提醒
+    cron.schedule('31 9 * * *', () => {
+      sendReminderForMealType('早餐後（中藥）');
+    });
+    
+    // 10:01 - 第3次提醒
+    cron.schedule('1 10 * * *', () => {
+      sendReminderForMealType('早餐後（中藥）');
+    });
+    
+    // 10:31 - 第4次提醒（超過3次）
+    cron.schedule('31 10 * * *', () => {
+      sendReminderForMealType('早餐後（中藥）');
+    });
+    
+    // ==================== 午餐（中藥）===================
+    // 13:00 - 第1次提醒
+    cron.schedule('0 13 * * *', () => {
+      sendReminderForMealType('午餐後');
+    });
+    
+    // 13:30 - 第2次提醒
+    cron.schedule('30 13 * * *', () => {
+      sendReminderForMealType('午餐後');
+    });
+    
+    // 14:00 - 第3次提醒
+    cron.schedule('0 14 * * *', () => {
+      sendReminderForMealType('午餐後');
+    });
+    
+    // 14:30 - 第4次提醒（超過3次）
+    cron.schedule('30 14 * * *', () => {
+      sendReminderForMealType('午餐後');
+    });
+    
+    // ==================== 晚餐（中藥）===================
+    // 19:00 - 第1次提醒
+    cron.schedule('0 19 * * *', () => {
+      sendReminderForMealType('晚餐後');
+    });
+    
+    // 19:30 - 第2次提醒
+    cron.schedule('30 19 * * *', () => {
+      sendReminderForMealType('晚餐後');
+    });
+    
+    // 20:00 - 第3次提醒
+    cron.schedule('0 20 * * *', () => {
+      sendReminderForMealType('晚餐後');
+    });
+    
+    // 20:30 - 第4次提醒（超過3次）
+    cron.schedule('30 20 * * *', () => {
+      sendReminderForMealType('晚餐後');
     });
     
     console.log('✅ 所有排程任務已啟動');
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
-    console.log('   • 每分鐘 - 檢查定時提醒');
-    console.log('   • 每 5 分鐘 - 檢查重試提醒');
+    console.log('   • 08:00-09:30 早餐（西藥）提醒 × 4');
+    console.log('   • 09:01-10:31 早餐（中藥）提醒 × 4');
+    console.log('   • 13:00-14:30 午餐提醒 × 4');
+    console.log('   • 19:00-20:30 晚餐提醒 × 4');
     
     // 啟動時初始化當日排程
     initDailySchedule();
@@ -206,8 +258,7 @@ function createScheduler(bot, db) {
   return {
     start,
     initDailySchedule,
-    checkAndSendReminders,
-    checkRetryNeeded
+    sendReminderForMealType
   };
 }
 

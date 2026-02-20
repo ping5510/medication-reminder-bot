@@ -243,81 +243,39 @@ async function handleWebhookEvent(bot, event, db) {
         // 發送確認訊息
         await sendTextMessage(bot, userId, '✅ 已記錄！太棒了，記得按時服藥有助於健康！');
         
-        // 檢查是否為早餐第一劑，若是則觸發第二劑提醒
-        if (schedule && !schedule.is_second_dose && schedule.link_delay_minutes) {
-          // 延遲 60 分鐘後觸發第二劑提醒
-          setTimeout(async () => {
-            const secondDoseSchedule = getSchedulesByUserId(user.id).find(s => s.linked_schedule_id === schedule.id);
-            if (secondDoseSchedule) {
-              // 檢查第二劑是否已經被記錄
-              const secondLog = getMedicationLogByScheduleAndDate(secondDoseSchedule.id, today);
-              if (secondLog && secondLog.status === 'PENDING') {
-                // 發送第二劑提醒
-                const scheduleInfo = {
-                  mealType: secondDoseSchedule.meal_type,
-                  medicines: JSON.parse(secondDoseSchedule.medicines),
-                  scheduleId: secondDoseSchedule.id,
-                  retryCount: 0,
-                  isSecondDose: true
-                };
-                await sendReminderMessage(bot, userId, scheduleInfo);
-                
-                // 更新記錄的提醒時間
-                const { getDb } = require('./database');
-                const db2 = getDb();
-                db2.updateMedicationLogStatus(secondLog.id, 'PENDING', {
-                  lastRemindedAt: new Date().toISOString()
-                });
-              }
-            }
-          }, schedule.link_delay_minutes * 60 * 1000);
-          
-          await sendTextMessage(bot, userId, '💡 提醒：第一劑吃完後 1 小時記得服用中藥哦！');
+        // 檢查是否為早餐第一劑（西藥），若是則提示用戶記得服用中藥
+        // 注意：中藥提醒會由 Cron Job 在 09:01 自動發送（前提是西藥已服用）
+        if (schedule && schedule.meal_type === '早餐後（西藥）') {
+          await sendTextMessage(bot, userId, '💡 提醒：請於 1 小時後（09:01）記得服用中藥哦！');
         }
       }
     }
     
     // 處理「等一下吃」
+    // 注意：不再使用 setTimeout，由 Cron Job 在 30 分鐘後自動發送提醒
     if (postback.action === 'snooze') {
       const today = new Date().toISOString().split('T')[0];
       const log = getMedicationLogByScheduleAndDate(postback.scheduleId, today);
+      const schedule = getScheduleById(postback.scheduleId);
       
       if (log) {
         const newRetryCount = postback.retryCount + 1;
         
+        // 更新狀態為 SNOOZED
+        updateMedicationLogStatus(log.id, 'SNOOZED', {
+          retryCount: newRetryCount,
+          lastRemindedAt: new Date().toISOString()
+        });
+        
         if (newRetryCount < 3) {
-          // 更新狀態為 SNOOZED
-          updateMedicationLogStatus(log.id, 'SNOOZED', {
-            retryCount: newRetryCount,
-            lastRemindedAt: new Date().toISOString()
-          });
-          
-          // 發送確認訊息
-          await sendTextMessage(bot, userId, `⏰ 好的，30 分鐘後再提醒您！（已提醒 ${newRetryCount}/3 次）`);
-          
-          // 安排 30 分鐘後的提醒
-          setTimeout(async () => {
-            const schedule = getScheduleById(postback.scheduleId);
-            if (schedule) {
-              const scheduleInfo = {
-                mealType: schedule.meal_type,
-                medicines: JSON.parse(schedule.medicines),
-                scheduleId: schedule.id,
-                retryCount: newRetryCount,
-                isSecondDose: schedule.is_second_dose
-              };
-              await sendReminderMessage(bot, userId, scheduleInfo);
-            }
-          }, 30 * 60 * 1000);
-          
+          // 發送確認訊息，告知下次提醒時間
+          await sendTextMessage(bot, userId, `⏰ 好的，下一次提醒將在 30 分鐘後發送（已提醒 ${newRetryCount}/3 次）`);
         } else {
           // 超過 3 次，標記為 MISSED
           updateMedicationLogStatus(log.id, 'MISSED', {
             retryCount: newRetryCount,
             lastRemindedAt: new Date().toISOString()
           });
-          
-          // 發送提醒
           await sendTextMessage(bot, userId, '⚠️ 已超過最大提醒次數（3次），請記得盡快服用藥物！');
         }
       }
