@@ -243,6 +243,12 @@ function createScheduler(bot, db) {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
+    // ==================== 測試排程 ====================
+    // 15:10 - 測試午餐提醒（可刪除）
+    cron.schedule('10 15 * * *', () => {
+      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
+    });
+    
     console.log('✅ 所有排程任務已啟動');
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
@@ -250,6 +256,7 @@ function createScheduler(bot, db) {
     console.log('   • 09:01-10:31 早餐（中藥）提醒 × 4');
     console.log('   • 13:00-14:30 午餐提醒 × 4');
     console.log('   • 19:00-20:30 晚餐提醒 × 4');
+    console.log('   • 15:10 測試午餐提醒');
     
     // 啟動時初始化當日排程
     initDailySchedule();
