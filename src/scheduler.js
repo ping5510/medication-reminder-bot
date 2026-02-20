@@ -34,6 +34,18 @@ function createScheduler(bot, db) {
   
   console.log('✅ 排程器初始化完成');
   
+  // 調試：顯示當前時間
+  console.log('🔍 調試資訊：');
+  console.log('   - UTC 時間:', new Date().toISOString());
+  console.log('   - 台灣時間:', getTaiwanTime().toISOString());
+  console.log('   - 当前 cron 时间:', getTaiwanTime().toTimeString().slice(0, 5));
+  
+  // 調試：顯示當前時間
+  console.log('🔍 調試資訊：');
+  console.log('   - UTC 時間:', new Date().toISOString());
+  console.log('   - 台灣時間:', getTaiwanTime().toISOString());
+  console.log('   - 当前 cron 时间:', getTaiwanTime().toTimeString().slice(0, 5));
+  
   /**
    * 初始化當日排程
    * 每天 00:00 執行，為每個用戶建立當日的服藥記錄
@@ -244,6 +256,11 @@ function createScheduler(bot, db) {
     });
     
     // ==================== 測試排程 ====================
+    // 每分鐘執行一次（調試用）
+    cron.schedule('* * * * *', () => {
+      console.log('✅ Cron 測試: 每分鐘執行');
+    });
+    
     // 15:10 - 測試午餐提醒（可刪除）
     cron.schedule('10 15 * * *', () => {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
