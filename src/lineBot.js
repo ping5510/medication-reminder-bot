@@ -340,6 +340,7 @@ async function handleWebhookEvent(bot, event, db) {
 • 測試 - 發送測試訊息
 • 設定提醒 - 設定每日提醒排程
 • 查詢提醒 - 查看今日服藥狀態
+• 立即提醒 - 立即觸發午餐提醒（測試用）
 • 說明 - 顯示此說明
 
 💊 提醒規則：
@@ -348,6 +349,13 @@ async function handleWebhookEvent(bot, event, db) {
 • 選擇「等一下吃」會在 30 分鐘後再次提醒
 • 最多提醒 3 次
 `);
+    }
+    else if (messageText === '立即提醒') {
+      // 手動觸發午餐提醒（測試用）
+      const { createScheduler } = require('./scheduler');
+      const schedulerModule = createScheduler(bot, db);
+      await schedulerModule.sendReminderForMealType('午餐後');
+      await sendTextMessage(bot, userId, '✅ 已觸發午餐提醒！請檢查是否有收到訊息。');
     }
     else {
       // 預設回覆
