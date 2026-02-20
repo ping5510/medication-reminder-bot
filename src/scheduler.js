@@ -258,6 +258,7 @@ function createScheduler(bot, db) {
     // ==================== 測試排程 ====================
     // 15:35 - 測試午餐提醒（使用 Push API）
     cron.schedule('35 15 * * *', () => {
+      console.log('🔔 觸發 15:35 午餐提醒 cron');
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
@@ -268,6 +269,7 @@ function createScheduler(bot, db) {
     console.log('   • 09:01-10:31 早餐（中藥）提醒 × 4');
     console.log('   • 13:00-14:30 午餐提醒 × 4');
     console.log('   • 19:00-20:30 晚餐提醒 × 4');
+    console.log('   • 15:35 測試午餐提醒');
     
     // 啟動時初始化當日排程
     initDailySchedule();
