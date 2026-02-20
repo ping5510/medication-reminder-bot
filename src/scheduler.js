@@ -10,6 +10,9 @@
 
 const cron = require('node-cron');
 
+// 設定時區為台灣
+process.env.TZ = 'Asia/Taipei';
+
 // 取得台灣時間
 function getTaiwanTime() {
   const now = new Date();
@@ -149,6 +152,16 @@ function createScheduler(bot, db) {
         isSecondDose: schedule.is_second_dose
       };
       
+      console.log(`📤 準備發送提醒: ${user.line_user_id} - ${mealType}`);
+      
+      await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+        mealType: schedule.meal_type,
+        medicines: JSON.parse(schedule.medicines),
+        scheduleId: schedule.id,
+        retryCount: retryCount,
+        isSecondDose: schedule.is_second_dose
+      };
+      
       await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
       
       // 更新狀態為 SNOOZED（表示用戶暫時不想吃）
@@ -256,9 +269,9 @@ function createScheduler(bot, db) {
     });
     
     // ==================== 測試排程 ====================
-    // 15:35 - 測試午餐提醒（使用 Push API）
-    cron.schedule('35 15 * * *', () => {
-      console.log('🔔 觸發 15:35 午餐提醒 cron');
+    // 16:00 - 測試午餐提醒
+    cron.schedule('0 16 * * *', () => {
+      console.log('🔔 觸發 16:00 午餐提醒 cron');
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
@@ -270,6 +283,10 @@ function createScheduler(bot, db) {
     console.log('   • 13:00-14:30 午餐提醒 × 4');
     console.log('   • 19:00-20:30 晚餐提醒 × 4');
     console.log('   • 15:35 測試午餐提醒');
+    
+    // 啟動時顯示時間
+    const now = getTaiwanTime();
+    console.log(`🔍 當前台灣時間: ${now.toISOString()}`);
     
     // 啟動時初始化當日排程
     initDailySchedule();
