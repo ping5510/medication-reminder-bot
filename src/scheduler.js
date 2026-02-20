@@ -34,18 +34,6 @@ function createScheduler(bot, db) {
   
   console.log('✅ 排程器初始化完成');
   
-  // 調試：顯示當前時間
-  console.log('🔍 調試資訊：');
-  console.log('   - UTC 時間:', new Date().toISOString());
-  console.log('   - 台灣時間:', getTaiwanTime().toISOString());
-  console.log('   - 当前 cron 时间:', getTaiwanTime().toTimeString().slice(0, 5));
-  
-  // 調試：顯示當前時間
-  console.log('🔍 調試資訊：');
-  console.log('   - UTC 時間:', new Date().toISOString());
-  console.log('   - 台灣時間:', getTaiwanTime().toISOString());
-  console.log('   - 当前 cron 时间:', getTaiwanTime().toTimeString().slice(0, 5));
-  
   /**
    * 初始化當日排程
    * 每天 00:00 執行，為每個用戶建立當日的服藥記錄
@@ -83,8 +71,6 @@ function createScheduler(bot, db) {
     const today = getTaiwanDateString();
     
     console.log(`🔔 檢查 ${mealType} 提醒...`);
-    console.log(`   - 用戶數量: ${users.length}`);
-    console.log(`   - 日期: ${today}`);
     
     if (users.length === 0) {
       console.log('⚠️ 沒有找到任何用戶');
@@ -103,17 +89,13 @@ function createScheduler(bot, db) {
       const schedules = getSchedulesByUserId(user.id);
       const schedule = schedules.find(s => s.meal_type === mealType);
       
-      console.log(`   - 用戶 ${user.line_user_id}: 排程數量 ${schedules.length}`);
-      
       if (!schedule) {
-        console.log(`⚠️ 找不到排程: ${mealType}（用戶 ${user.line_user_id}）`);
+        console.log(`⚠️ 找不到排程: ${mealType}`);
         continue;
       }
       
       // 取得服藥記錄
       const log = getMedicationLogByScheduleAndDate(schedule.id, today);
-      
-      console.log(`   - 服藥記錄: ${log ? log.status : 'N/A'}`);
       
       if (!log) {
         console.log(`⚠️ 找不到服藥記錄: ${mealType}`);
@@ -273,17 +255,6 @@ function createScheduler(bot, db) {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 測試排程 ====================
-    // 每分鐘執行一次（調試用）
-    cron.schedule('* * * * *', () => {
-      console.log('✅ Cron 測試: 每分鐘執行');
-    });
-    
-    // 15:10 - 測試午餐提醒（可刪除）
-    cron.schedule('10 15 * * *', () => {
-      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
-    });
-    
     console.log('✅ 所有排程任務已啟動');
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
@@ -291,7 +262,6 @@ function createScheduler(bot, db) {
     console.log('   • 09:01-10:31 早餐（中藥）提醒 × 4');
     console.log('   • 13:00-14:30 午餐提醒 × 4');
     console.log('   • 19:00-20:30 晚餐提醒 × 4');
-    console.log('   • 15:10 測試午餐提醒');
     
     // 啟動時初始化當日排程
     initDailySchedule();
