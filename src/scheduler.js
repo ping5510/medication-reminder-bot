@@ -116,14 +116,8 @@ function createScheduler(bot, db) {
         continue;
       }
       
-      // 如果是早餐第二劑（中藥），檢查第一劑是否已服用
-      if (schedule.is_second_dose && schedule.linked_schedule_id) {
-        const firstDoseLog = getMedicationLogByScheduleAndDate(schedule.linked_schedule_id, today);
-        if (!firstDoseLog || firstDoseLog.status !== 'TAKEN') {
-          console.log(`⏭️ 跳過 ${mealType}（第一劑尚未服用）`);
-          continue;
-        }
-      }
+      // 忽略第一劑檢查：中藥可以獨立發送提醒
+      // （用戶可能會選擇先吃中藥或西藥，不應該強制綁定）
       
       // 檢查重試次數
       const retryCount = log.retry_count || 0;
