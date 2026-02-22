@@ -176,6 +176,7 @@ function createMedicationLog(scheduleId, userId, date) {
     retry_count: 0,
     last_reminded_at: null,
     taken_at: null,
+    chinese_medicine_triggered: false,  // 中藥提醒是否已啟動
     created_at: new Date().toISOString()
   };
 
@@ -220,6 +221,11 @@ function updateMedicationLogStatus(logId, status, additionalData = {}) {
 
   if (additionalData.lastRemindedAt) {
     log.last_reminded_at = additionalData.lastRemindedAt;
+  }
+
+  // 更新中藥提醒觸發標記
+  if (additionalData.chineseMedicineTriggered !== undefined) {
+    log.chinese_medicine_triggered = additionalData.chineseMedicineTriggered;
   }
 
   data.medicationLogs[logIndex] = log;

@@ -232,21 +232,30 @@ async function handleWebhookEvent(bot, event, db) {
       
       if (log) {
         const now = new Date().toISOString();
-        updateMedicationLogStatus(log.id, 'TAKEN', {
-          takenAt: now,
-          retryCount: postback.retryCount
-        });
-        
-        // 取得排程資訊
         const schedule = getScheduleById(postback.scheduleId);
         
         // 發送確認訊息
         await sendTextMessage(bot, userId, '✅ 已記錄！太棒了，記得按時服藥有助於健康！');
         
-        // 檢查是否為早餐第一劑（西藥），若是則提示用戶記得服用中藥
-        // 注意：中藥提醒會由 Cron Job 在 09:01 自動發送（前提是西藥已服用）
+        // 檢查是否為早餐第一劑（西藥），啟動中藥提醒
         if (schedule && schedule.meal_type === '早餐後（西藥）') {
-          await sendTextMessage(bot, userId, '💡 提醒：請於 1 小時後（09:01）記得服用中藥哦！');
+          // 設置標記：中藥提醒已啟動
+          updateMedicationLogStatus(log.id, 'TAKEN', {
+            takenAt: now,
+            retryCount: postback.retryCount,
+            chineseMedicineTriggered: true
+          });
+          
+          // 發送中藥提醒（1小時後開始，每30分鐘一次）
+          scheduleChineseMedicineReminder(bot, user, db, 1);  // 1小時後
+          
+          await sendTextMessage(bot, userId, '💡 提醒：1 小時後會發送中藥提醒，記得服用哦！');
+        } else {
+          // 一般情況（午餐、晚餐或中藥）
+          updateMedicationLogStatus(log.id, 'TAKEN', {
+            takenAt: now,
+            retryCount: postback.retryCount
+          });
         }
       }
     }
@@ -422,6 +431,66 @@ async function setupDefaultSchedules(userId) {
   createMedicationLog(dinnerSchedule.id, userId, today);
   
   console.log(`✅ 用戶 ${userId} 的排程已建立`);
+}
+
+/**
+ * 發送中藥提醒（遞歸函數，實現多次提醒）
+ * @param {object} bot - LINE Bot 實例
+ * @param {object} user - 用戶對象
+ * @param {object} db - 數據庫操作對象
+ * @param {number} delayHours - 延時（小時）
+ * @param {number} reminderCount - 已發送次數
+ */
+function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminderCount = 0) {
+  const { getSchedulesByUserId, getMedicationLogByScheduleAndDate, updateMedicationLogStatus, sendReminderMessage, sendTextMessage } = db;
+  
+  // 計算延時毫秒數
+  const delayMs = delayHours * 60 * 60 * 1000;
+  
+  setTimeout(async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const schedules = getSchedulesByUserId(user.id);
+    const chineseSchedule = schedules.find(s => s.meal_type === '早餐後（中藥）');
+    
+    if (!chineseSchedule) {
+      console.log('⚠️ 找不到早餐中藥排程');
+      return;
+    }
+    
+    const log = getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
+    
+    // 如果中藥已經服用，跳過
+    if (log && log.status === 'TAKEN') {
+      console.log('⏭️ 跳過中藥提醒（已服用）');
+      return;
+    }
+    
+    // 發送中藥提醒
+    const scheduleInfo = {
+      mealType: chineseSchedule.meal_type,
+      medicines: JSON.parse(chineseSchedule.medicines),
+      scheduleId: chineseSchedule.id,
+      retryCount: reminderCount,
+      isSecondDose: chineseSchedule.is_second_dose
+    };
+    
+    await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+    
+    // 更新狀態
+    if (log) {
+      updateMedicationLogStatus(log.id, 'SNOOZED', {
+        retryCount: reminderCount + 1,
+        lastRemindedAt: new Date().toISOString()
+      });
+    }
+    
+    console.log(`✅ 中藥提醒已發送給 ${user.line_user_id} (${reminderCount + 1}/3)`);
+    
+    // 如果還沒超過3次，繼續設置下一次提醒（30分鐘後）
+    if (reminderCount < 2) {
+      scheduleChineseMedicineReminder(bot, user, db, 0.5, reminderCount + 1);  // 30分鐘 = 0.5小時
+    }
+  }, delayMs);
 }
 
 module.exports = {
