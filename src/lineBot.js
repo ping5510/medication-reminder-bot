@@ -442,7 +442,7 @@ async function setupDefaultSchedules(userId) {
  * @param {number} reminderCount - 已發送次數
  */
 function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminderCount = 0) {
-  const { getSchedulesByUserId, getMedicationLogByScheduleAndDate, updateMedicationLogStatus, sendReminderMessage, sendTextMessage } = db;
+  const { getSchedulesByUserId, getMedicationLogByScheduleAndDate, updateMedicationLogStatus } = db;
   
   // 計算延時毫秒數
   const delayMs = delayHours * 60 * 60 * 1000;
@@ -465,6 +465,9 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
       return;
     }
     
+    // 從模組內部獲取 sendReminderMessage 函數
+    const { sendReminderMessage: sendReminder } = require('./lineBot');
+    
     // 發送中藥提醒
     const scheduleInfo = {
       mealType: chineseSchedule.meal_type,
@@ -474,7 +477,7 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
       isSecondDose: chineseSchedule.is_second_dose
     };
     
-    await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+    await sendReminder(bot, user.line_user_id, scheduleInfo);
     
     // 更新狀態
     if (log) {
