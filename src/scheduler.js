@@ -162,6 +162,34 @@ function createScheduler(bot, db) {
   };
   
   /**
+   * 發送中藥備用提醒（用戶都沒回覆時使用）
+   * 檢查是否需要跳過（如果用戶已經點擊吃過西藥）
+   */
+  const sendChineseMedicineReminderBackup = () => {
+    const users = getAllUsers();
+    const today = getTaiwanDateString();
+    
+    for (const user of users) {
+      const schedules = getSchedulesByUserId(user.id);
+      const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
+      
+      if (!westernSchedule) continue;
+      
+      const westernLog = getMedicationLogByScheduleAndDate(westernSchedule.id, today);
+      
+      // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
+      if (westernLog && westernLog.chinese_medicine_triggered) {
+        console.log(`⏭️ 跳過 ${user.line_user_id} 早餐中藥（已由用戶回覆觸發）`);
+        continue;
+      }
+      
+      // 發送中藥提醒
+      console.log(`📤 備用發送 ${user.line_user_id} 早餐中藥提醒`);
+      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
+    }
+  };
+  
+  /**
    * 啟動所有排程任務
    */
   const start = () => {
@@ -195,29 +223,24 @@ function createScheduler(bot, db) {
     // 10:30 - 備用提醒時間（西藥最後一次提醒後1小時）
     // 如果用戶已經點擊吃過，會由 lineBot.js 的 setTimeout 提前發送
     // 這裡作為備用：如果用戶都沒回覆，10:30 發送中藥提醒
+    // 然後每30分鐘繼續提醒：11:00, 11:30, 12:00
     cron.schedule('30 10 * * *', () => {
-      // 檢查西藥是否已觸發中藥提醒
-      const users = getAllUsers();
-      const today = getTaiwanDateString();
-      
-      for (const user of users) {
-        const schedules = getSchedulesByUserId(user.id);
-        const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
-        
-        if (!westernSchedule) continue;
-        
-        const westernLog = getMedicationLogByScheduleAndDate(westernSchedule.id, today);
-        
-        // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
-        if (westernLog && westernLog.chinese_medicine_triggered) {
-          console.log(`⏭️ 跳過 ${user.line_user_id} 早餐中藥（已由用戶回覆觸發）`);
-          continue;
-        }
-        
-        // 否則發送中藥提醒（用戶都沒回覆的情況）
-        console.log(`📤 備用發送 ${user.line_user_id} 早餐中藥提醒`);
-        sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
-      }
+      sendChineseMedicineReminderBackup();
+    });
+    
+    // 11:00 - 第2次提醒
+    cron.schedule('0 11 * * *', () => {
+      sendChineseMedicineReminderBackup();
+    });
+    
+    // 11:30 - 第3次提醒
+    cron.schedule('30 11 * * *', () => {
+      sendChineseMedicineReminderBackup();
+    });
+    
+    // 12:00 - 第4次提醒（超過3次）
+    cron.schedule('0 12 * * *', () => {
+      sendChineseMedicineReminderBackup();
     });
     
     // ==================== 午餐（中藥）===================
@@ -273,7 +296,7 @@ function createScheduler(bot, db) {
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
     console.log('   • 08:00-09:30 早餐（西藥）提醒 × 4');
-    console.log('   • 10:30 早餐（中藥）備用提醒');
+    console.log('   • 10:30-12:00 早餐（中藥）備用提醒 × 4');
     console.log('   • 13:00-14:30 午餐提醒 × 4');
     console.log('   • 19:00-20:30 晚餐提醒 × 4');
     console.log('   • 16:15 測試午餐提醒');
