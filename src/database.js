@@ -13,17 +13,36 @@ let pool = null;
  * 初始化數據庫
  */
 async function initDatabase() {
-  const connectionString = process.env.DATABASE_URL;
+  // 優先使用 DATABASE_URL，其次使用 Zeabur 提供的 POSTGRES 環境變數
+  let connectionString = process.env.DATABASE_URL;
   
   console.log('🔍 檢查環境變數...');
-  console.log('   所有環境變數:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('PG') || k.includes('POSTGRES')).join(', ') || '無');
+  
+  // 檢查 Zeabur 提供的 PostgreSQL 環境變數
+  const postgresUri = process.env.POSTGRES_URI || process.env.POSTGRES_CONNECTION_STRING;
+  const postgresHost = process.env.POSTGRES_HOST || process.env.POSTGRESQL_HOST;
+  const postgresPort = process.env.POSTGRES_PORT || process.env.POSTGRESQL_PORT || '5432';
+  const postgresDb = process.env.POSTGRES_DATABASE || 'zeabur';
+  const postgresUser = process.env.POSTGRES_USERNAME || 'root';
+  const postgresPassword = process.env.POSTGRES_PASSWORD;
+  
   console.log('   DATABASE_URL:', connectionString ? '已設定' : '未設定');
+  console.log('   POSTGRES_URI:', postgresUri ? '已設定' : '未設定');
+  console.log('   POSTGRES_HOST:', postgresHost ? '已設定' : '未設定');
+  
+  // 如果沒有 DATABASE_URL，嘗試使用 POSTGRES 相關變數構造連接字串
+  if (!connectionString && postgresUri) {
+    connectionString = postgresUri;
+    console.log('   → 使用 POSTGRES_URI 作為連接字串');
+  } else if (!connectionString && postgresHost && postgresPassword) {
+    connectionString = `postgresql://${postgresUser}:${postgresPassword}@${postgresHost}:${postgresPort}/${postgresDb}`;
+    console.log('   → 使用構造的連接字串');
+  }
   
   if (!connectionString) {
-    console.error('❌ DATABASE_URL 未設定！');
-    console.error('   請在 Zeabur 環境變數中設定 DATABASE_URL');
-    console.error('   格式: postgresql://user:password@host:port/database');
-    throw new Error('DATABASE_URL 未設定');
+    console.error('❌ 資料庫連接字串未設定！');
+    console.error('   請在 Zeabur 環境變數中設定 DATABASE_URL 或確保 PostgreSQL 服務已啟動');
+    throw new Error('資料庫連接字串未設定');
   }
   
   pool = new Pool({
