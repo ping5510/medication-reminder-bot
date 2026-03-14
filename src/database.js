@@ -229,7 +229,27 @@ function getDb() {
     },
     
     // 排程操作
-    createSchedule: async (userId, scheduleData) => {
+    createSchedule: async (...args) => {
+      // 兼容舊調用格式: (userId, mealType, defaultTime, medicines, options)
+      // 新格式: (userId, scheduleData)
+      let userId, scheduleData;
+      
+      if (args.length >= 5) {
+        // 舊格式
+        userId = args[0];
+        scheduleData = {
+          meal_type: args[1],
+          default_time: args[2],
+          medicines: args[3],
+          is_second_dose: args[4]?.isSecondDose ? 1 : 0,
+          linked_schedule_id: args[4]?.linkedScheduleId || null
+        };
+      } else {
+        // 新格式
+        userId = args[0];
+        scheduleData = args[1];
+      }
+      
       if (pool) {
         const id = uuidv4();
         await pool.query(
@@ -276,6 +296,15 @@ function getDb() {
     
     // 用藥記錄操作
     createMedicationLog: async (userId, scheduleId, date) => {
+      // 兼容調用: (userId, scheduleId, date) 或 (scheduleId, userId, date)
+      // 嘗試檢測參數類型
+      if (typeof scheduleId === 'string' && scheduleId.includes('-') && typeof date !== 'string') {
+        // 可能是 (scheduleId, userId, date) 格式
+        const temp = scheduleId;
+        scheduleId = userId;
+        userId = temp;
+      }
+      
       if (pool) {
         const id = uuidv4();
         await pool.query(
