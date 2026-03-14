@@ -3,17 +3,17 @@
   "version": "1.0.0",
   "build": {
     "env": {
-      "NODE_ENV": "production"
+      "NODE_ENV": "production",
+      "DATABASE_URL": "postgresql://root:DwYrcms2h975xHNedf81Q0KFv3u4I6jk@hnd1.clusters.zeabur.com:31748/zeabur"
     }
   },
   "start": {
-    "command": "npm start",
+    "command": "node src/index.js",
     "timeout": 60
   },
   "environment": {
     "NODE_ENV": "production",
     "PORT": "3000",
-    "TIMEZONE": "Asia/Taipei",
-    "DATABASE_URL": "postgresql://root:DwYrcms2h975xHNedf81Q0KFv3u4I6jk@hnd1.clusters.zeabur.com:31748/zeabur"
+    "TIMEZONE": "Asia/Taipei"
   }
 }
