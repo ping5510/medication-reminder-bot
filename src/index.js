@@ -57,7 +57,7 @@ async function main() {
     scheduler.start();
   }
 
-// LINE Webhook 端點
+  // LINE Webhook 端點
 app.post('/webhook', (req, res) => {
   // 必須回傳 200 OK
   res.status(200).send('OK');
@@ -240,6 +240,7 @@ app.listen(port, () => {
 ╚═══════════════════════════════════════════════════╝
   `);
 });
+}
 
 // 啟動服務
 main();
