@@ -230,6 +230,8 @@ function getDb() {
     
     // 排程操作
     createSchedule: async (...args) => {
+      console.log('   [DB] createSchedule 調用:', { argsLength: args.length, args: JSON.stringify(args) });
+      
       // 兼容舊調用格式: (userId, mealType, defaultTime, medicines, options)
       // 新格式: (userId, scheduleData)
       let userId, scheduleData;
@@ -250,12 +252,16 @@ function getDb() {
         scheduleData = args[1];
       }
       
+      console.log('   [DB] 解析後:', { userId, scheduleData });
+      
       if (pool) {
         const id = uuidv4();
+        console.log('   [DB] 執行 INSERT...');
         await pool.query(
           'INSERT INTO schedules (id, user_id, meal_type, default_time, medicines, is_second_dose, linked_schedule_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
           [id, userId, scheduleData.meal_type, scheduleData.default_time, JSON.stringify(scheduleData.medicines), scheduleData.is_second_dose || 0, scheduleData.linked_schedule_id || null]
         );
+        console.log('   [DB] INSERT 完成, id:', id);
         return { id, user_id: userId, ...scheduleData };
       } else {
         const schedule = { id: uuidv4(), user_id: userId, ...scheduleData, created_at: new Date().toISOString() };
@@ -393,6 +399,11 @@ function getDb() {
     closeDatabase
   };
 }
+
+module.exports = {
+  initDatabase,
+  getDb
+};
 
 module.exports = {
   initDatabase,

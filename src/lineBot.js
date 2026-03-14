@@ -383,12 +383,15 @@ async function handleWebhookEvent(bot, event, db) {
  */
 async function setupDefaultSchedules(userId) {
   // 動態獲取數據庫模組
+  console.log('[setupDefaultSchedules] 開始建立排程 for userId:', userId);
   const { getDb } = require('./database');
   const db = getDb();
+  console.log('[setupDefaultSchedules] db 對象:', Object.keys(db));
   const { createSchedule, getSchedulesByUserId, createMedicationLog } = db;
   
   // 清除現有排程
   const existingSchedules = await getSchedulesByUserId(userId);
+  console.log('[setupDefaultSchedules] 現有排程數量:', existingSchedules.length);
   
   // 建立早餐第一劑（西藥）
   const breakfastFirst = await createSchedule(
