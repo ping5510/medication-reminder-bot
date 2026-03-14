@@ -15,45 +15,46 @@ const { initDatabase, getDb } = require('./database');
 const { createBot, handleWebhookEvent } = require('./lineBot');
 const { createScheduler } = require('./scheduler');
 
-// 初始化
-const app = express();
-const port = process.env.PORT || 3000;
+async function main() {
+  // 初始化
+  const app = express();
+  const port = process.env.PORT || 3000;
 
-// 中間件
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  // 中間件
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-// 初始化資料庫
-let db;
-try {
-  db = initDatabase();
-} catch (error) {
-  console.error('❌ 資料庫初始化失敗:', error.message);
-  process.exit(1);
-}
+  // 初始化資料庫
+  let db;
+  try {
+    db = await initDatabase();
+  } catch (error) {
+    console.error('❌ 資料庫初始化失敗:', error.message);
+    process.exit(1);
+  }
 
-// 獲取數據庫操作函數
-const dbOps = db;
+  // 獲取數據庫操作函數
+  const dbOps = db;
 
-// 初始化 LINE Bot
-let bot;
-try {
-  bot = linebot({
-    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-    channelSecret: process.env.LINE_CHANNEL_SECRET
-  });
-  console.log('✅ LINE Bot 初始化成功');
-} catch (error) {
-  console.error('❌ LINE Bot 初始化失敗:', error.message);
-  console.log('⚠️ 伺服器將以有限功能啟動（Webhook 接收模式）');
-}
+  // 初始化 LINE Bot
+  let bot;
+  try {
+    bot = linebot({
+      channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+      channelSecret: process.env.LINE_CHANNEL_SECRET
+    });
+    console.log('✅ LINE Bot 初始化成功');
+  } catch (error) {
+    console.error('❌ LINE Bot 初始化失敗:', error.message);
+    console.log('⚠️ 伺服器將以有限功能啟動（Webhook 接收模式）');
+  }
 
-// 初始化排程器
-let scheduler;
-if (bot) {
-  scheduler = createScheduler(bot, dbOps);
-  scheduler.start();
-}
+  // 初始化排程器
+  let scheduler;
+  if (bot) {
+    scheduler = createScheduler(bot, dbOps);
+    scheduler.start();
+  }
 
 // LINE Webhook 端點
 app.post('/webhook', (req, res) => {
@@ -231,7 +232,7 @@ app.listen(port, () => {
 ╠═══════════════════════════════════════════════════╣
 ║  Port: ${port}                                       ║
 ║  Timezone: ${process.env.TIMEZONE || 'Asia/Taipei'}                        ║
-║  Database: JSON file storage                         ║
+║  Database: PostgreSQL                                 ║
 ╠═══════════════════════════════════════════════════╣
 ║  Webhook URL: /webhook                            ║
 ║  Health Check: /health                            ║
@@ -239,16 +240,23 @@ app.listen(port, () => {
   `);
 });
 
+// 啟動服務
+main();
+
 // 優雅關閉
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('📴 收到 SIGTERM，正在關閉...');
-  dbOps.closeDatabase();
+  if (dbOps.closeDatabase) {
+    await dbOps.closeDatabase();
+  }
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('📴 收到 SIGINT，正在關閉...');
-  dbOps.closeDatabase();
+  if (dbOps.closeDatabase) {
+    await dbOps.closeDatabase();
+  }
   process.exit(0);
 });
 

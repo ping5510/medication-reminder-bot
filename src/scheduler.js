@@ -41,22 +41,22 @@ function createScheduler(bot, db) {
    * 初始化當日排程
    * 每天 00:00 執行，為每個用戶建立當日的服藥記錄
    */
-  const initDailySchedule = () => {
-    const users = getAllUsers();
+  const initDailySchedule = async () => {
+    const users = await getAllUsers();
     const today = getTaiwanDateString();
     
     console.log(`📅 初始化 ${today} 的排程...`);
     
     for (const user of users) {
-      const schedules = getSchedulesByUserId(user.id);
+      const schedules = await getSchedulesByUserId(user.id);
       
       for (const schedule of schedules) {
         // 檢查當日記錄是否已存在
-        const existingLog = getMedicationLogByScheduleAndDate(schedule.id, today);
+        const existingLog = await getMedicationLogByScheduleAndDate(schedule.id, today);
         
         if (!existingLog) {
           // 建立新的服藥記錄
-          createMedicationLog(schedule.id, user.id, today);
+          await createMedicationLog(schedule.id, user.id, today);
           console.log(`✅ 建立記錄: ${user.line_user_id} - ${schedule.meal_type}`);
         }
       }
@@ -70,7 +70,7 @@ function createScheduler(bot, db) {
    * @param {string} mealType - 用藥類型（如「早餐後（西藥）」）
    */
   const sendReminderForMealType = async (mealType) => {
-    const users = getAllUsers();
+    const users = await getAllUsers();
     const today = getTaiwanDateString();
     
     console.log(`🔔 檢查 ${mealType} 提醒...`);
@@ -89,7 +89,7 @@ function createScheduler(bot, db) {
     
     for (const user of users) {
       // 查找對應的排程
-      const schedules = getSchedulesByUserId(user.id);
+      const schedules = await getSchedulesByUserId(user.id);
       const schedule = schedules.find(s => s.meal_type === mealType);
       
       if (!schedule) {
@@ -98,7 +98,7 @@ function createScheduler(bot, db) {
       }
       
       // 取得服藥記錄
-      const log = getMedicationLogByScheduleAndDate(schedule.id, today);
+      const log = await getMedicationLogByScheduleAndDate(schedule.id, today);
       
       if (!log) {
         console.log(`⚠️ 找不到服藥記錄: ${mealType}`);
@@ -128,7 +128,7 @@ function createScheduler(bot, db) {
       if (retryCount >= 3) {
         // 超過 3 次，發送最終提醒
         if (log.status !== 'MISSED') {
-          updateMedicationLogStatus(log.id, 'MISSED', {
+          await updateMedicationLogStatus(log.id, 'MISSED', {
             lastRemindedAt: new Date().toISOString()
           });
           await sendTextMessage(bot, user.line_user_id, '⚠️ 已超過最大提醒次數（3次），請記得盡快服用藥物！');
@@ -152,7 +152,7 @@ function createScheduler(bot, db) {
       
       // 更新狀態為 SNOOZED（表示用戶暫時不想吃）
       const newRetryCount = retryCount + 1;
-      updateMedicationLogStatus(log.id, 'SNOOZED', {
+      await updateMedicationLogStatus(log.id, 'SNOOZED', {
         retryCount: newRetryCount,
         lastRemindedAt: new Date().toISOString()
       });
@@ -165,17 +165,17 @@ function createScheduler(bot, db) {
    * 發送中藥備用提醒（用戶都沒回覆時使用）
    * 檢查是否需要跳過（如果用戶已經點擊吃過西藥）
    */
-  const sendChineseMedicineReminderBackup = () => {
-    const users = getAllUsers();
+  const sendChineseMedicineReminderBackup = async () => {
+    const users = await getAllUsers();
     const today = getTaiwanDateString();
     
     for (const user of users) {
-      const schedules = getSchedulesByUserId(user.id);
+      const schedules = await getSchedulesByUserId(user.id);
       const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
       
       if (!westernSchedule) continue;
       
-      const westernLog = getMedicationLogByScheduleAndDate(westernSchedule.id, today);
+      const westernLog = await getMedicationLogByScheduleAndDate(westernSchedule.id, today);
       
       // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
       if (westernLog && westernLog.chinese_medicine_triggered) {
@@ -185,7 +185,7 @@ function createScheduler(bot, db) {
       
       // 發送中藥提醒
       console.log(`📤 備用發送 ${user.line_user_id} 早餐中藥提醒`);
-      sendReminderForMealType('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
+      await sendReminderForMealType('早餐後（中藥）');
     }
   };
   
@@ -195,7 +195,7 @@ function createScheduler(bot, db) {
   const start = () => {
     // 每天 00:00 初始化當日排程
     cron.schedule('0 0 * * *', () => {
-      initDailySchedule();
+      initDailySchedule().catch(err => console.error('❌ 錯誤:', err));
     });
     
     // ==================== 早餐（西藥）===================

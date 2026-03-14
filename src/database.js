@@ -1,60 +1,99 @@
 /**
- * 吃藥提醒 LINE Bot - 數據存儲模組（JSON 文件存儲）
- * 兼容 Zeabur 無服務器環境
+ * 吃藥提醒 LINE Bot - 數據存儲模組（PostgreSQL）
  */
 
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 
-// 數據庫路徑
-const dataDir = path.join(__dirname, '..', 'data');
-const dbPath = path.join(dataDir, 'medication.json');
-
-// 內存緩存
-let data = {
-  users: [],
-  schedules: [],
-  medicationLogs: []
-};
+// PostgreSQL 连接池
+let pool = null;
 
 /**
  * 初始化數據庫
  */
-function initDatabase() {
-  // 確保數據目錄存在
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+async function initDatabase() {
+  const connectionString = process.env.DATABASE_URL;
+  
+  if (!connectionString) {
+    console.error('❌ DATABASE_URL 未設定！');
+    throw new Error('DATABASE_URL 未設定');
   }
-
-  // 加載現有數據
-  if (fs.existsSync(dbPath)) {
-    try {
-      const fileContent = fs.readFileSync(dbPath, 'utf8');
-      data = JSON.parse(fileContent);
-      console.log('✅ 數據庫加載成功:', dbPath);
-    } catch (error) {
-      console.error('❌ 數據庫加載失敗:', error.message);
-      data = { users: [], schedules: [], medicationLogs: [] };
+  
+  pool = new Pool({
+    connectionString: connectionString,
+    ssl: {
+      rejectUnauthorized: false
     }
-  } else {
-    // 創建新數據庫
-    saveDatabase();
-    console.log('✅ 新數據庫已創建:', dbPath);
+  });
+  
+  // 測試連接
+  try {
+    const client = await pool.connect();
+    console.log('✅ PostgreSQL 連接成功');
+    client.release();
+  } catch (error) {
+    console.error('❌ PostgreSQL 連接失敗:', error.message);
+    throw error;
   }
-
-  console.log('✅ 數據存儲初始化完成');
+  
+  // 創建表（如果不存在）
+  await createTables();
+  
+  console.log('✅ 數據庫初始化完成');
   return getDb();
 }
 
 /**
- * 保存數據到文件
+ * 創建數據表
  */
-function saveDatabase() {
+async function createTables() {
+  const usersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY,
+      line_user_id VARCHAR(255) UNIQUE NOT NULL,
+      display_name VARCHAR(255),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  
+  const schedulesTable = `
+    CREATE TABLE IF NOT EXISTS schedules (
+      id UUID PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      meal_type VARCHAR(255) NOT NULL,
+      default_time VARCHAR(10),
+      medicines TEXT NOT NULL,
+      is_second_dose INTEGER DEFAULT 0,
+      linked_schedule_id UUID,
+      link_delay_minutes INTEGER DEFAULT 60,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  
+  const medicationLogsTable = `
+    CREATE TABLE IF NOT EXISTS medication_logs (
+      id UUID PRIMARY KEY,
+      schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      date VARCHAR(10) NOT NULL,
+      status VARCHAR(20) DEFAULT 'PENDING',
+      retry_count INTEGER DEFAULT 0,
+      last_reminded_at TIMESTAMP,
+      taken_at TIMESTAMP,
+      chinese_medicine_triggered BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(schedule_id, date)
+    );
+  `;
+  
   try {
-    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
+    await pool.query(usersTable);
+    await pool.query(schedulesTable);
+    await pool.query(medicationLogsTable);
+    console.log('✅ 數據表已創建/確認存在');
   } catch (error) {
-    console.error('❌ 數據保存失敗:', error.message);
+    console.error('❌ 創建數據表失敗:', error.message);
+    throw error;
   }
 }
 
@@ -88,178 +127,181 @@ function getDb() {
 /**
  * 建立新用戶
  */
-function createUser(lineUserId, displayName = null) {
-  const existingUser = data.users.find(u => u.line_user_id === lineUserId);
+async function createUser(lineUserId, displayName = null) {
+  const existingUser = await getUserByLineId(lineUserId);
   if (existingUser) {
     return existingUser;
   }
-
-  const user = {
-    id: uuidv4(),
-    line_user_id: lineUserId,
-    display_name: displayName,
-    created_at: new Date().toISOString()
-  };
-
-  data.users.push(user);
-  saveDatabase();
-  return user;
+  
+  const id = uuidv4();
+  const result = await pool.query(
+    'INSERT INTO users (id, line_user_id, display_name) VALUES ($1, $2, $3) RETURNING *',
+    [id, lineUserId, displayName]
+  );
+  return result.rows[0];
 }
 
 /**
  * 透過 LINE User ID 取得用戶
  */
-function getUserByLineId(lineUserId) {
-  return data.users.find(u => u.line_user_id === lineUserId) || null;
+async function getUserByLineId(lineUserId) {
+  const result = await pool.query(
+    'SELECT * FROM users WHERE line_user_id = $1',
+    [lineUserId]
+  );
+  return result.rows[0] || null;
 }
 
 /**
  * 取得所有用戶
  */
-function getAllUsers() {
-  return data.users;
+async function getAllUsers() {
+  const result = await pool.query('SELECT * FROM users');
+  return result.rows;
 }
 
 /**
  * 建立排程
  */
-function createSchedule(userId, mealType, defaultTime, medicines, options = {}) {
-  const schedule = {
-    id: uuidv4(),
-    user_id: userId,
-    meal_type: mealType,
-    default_time: defaultTime,
-    medicines: JSON.stringify(medicines),
-    is_second_dose: options.isSecondDose || 0,
-    linked_schedule_id: options.linkedScheduleId || null,
-    link_delay_minutes: options.linkDelayMinutes || 60,
-    created_at: new Date().toISOString()
-  };
-
-  data.schedules.push(schedule);
-  saveDatabase();
-  return schedule;
+async function createSchedule(userId, mealType, defaultTime, medicines, options = {}) {
+  const id = uuidv4();
+  const medicinesJson = JSON.stringify(medicines);
+  
+  const result = await pool.query(
+    `INSERT INTO schedules (id, user_id, meal_type, default_time, medicines, is_second_dose, linked_schedule_id, link_delay_minutes) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [id, userId, mealType, defaultTime, medicinesJson, options.isSecondDose || 0, options.linkedScheduleId || null, options.linkDelayMinutes || 60]
+  );
+  return result.rows[0];
 }
 
 /**
  * 透過 ID 取得排程
  */
-function getScheduleById(scheduleId) {
-  return data.schedules.find(s => s.id === scheduleId) || null;
+async function getScheduleById(scheduleId) {
+  const result = await pool.query(
+    'SELECT * FROM schedules WHERE id = $1',
+    [scheduleId]
+  );
+  return result.rows[0] || null;
 }
 
 /**
  * 取得用戶的所有排程
  */
-function getSchedulesByUserId(userId) {
-  return data.schedules.filter(s => s.user_id === userId);
+async function getSchedulesByUserId(userId) {
+  const result = await pool.query(
+    'SELECT * FROM schedules WHERE user_id = $1',
+    [userId]
+  );
+  return result.rows;
 }
 
 /**
  * 建立服藥記錄
  */
-function createMedicationLog(scheduleId, userId, date) {
-  const existingLog = data.medicationLogs.find(
-    log => log.schedule_id === scheduleId && log.date === date
-  );
-  
-  if (existingLog) {
-    return existingLog;
+async function createMedicationLog(scheduleId, userId, date) {
+  // 檢查是否已存在
+  const existing = await getMedicationLogByScheduleAndDate(scheduleId, date);
+  if (existing) {
+    return existing;
   }
-
-  const log = {
-    id: uuidv4(),
-    schedule_id: scheduleId,
-    user_id: userId,
-    date: date,
-    status: 'PENDING',
-    retry_count: 0,
-    last_reminded_at: null,
-    taken_at: null,
-    chinese_medicine_triggered: false,  // 中藥提醒是否已啟動
-    created_at: new Date().toISOString()
-  };
-
-  data.medicationLogs.push(log);
-  saveDatabase();
-  return log;
+  
+  const id = uuidv4();
+  const result = await pool.query(
+    `INSERT INTO medication_logs (id, schedule_id, user_id, date) 
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [id, scheduleId, userId, date]
+  );
+  return result.rows[0];
 }
 
 /**
  * 透過 ID 取得服藥記錄
  */
-function getMedicationLogById(logId) {
-  return data.medicationLogs.find(log => log.id === logId) || null;
+async function getMedicationLogById(logId) {
+  const result = await pool.query(
+    'SELECT * FROM medication_logs WHERE id = $1',
+    [logId]
+  );
+  return result.rows[0] || null;
 }
 
 /**
  * 透過排程 ID 和日期取得服藥記錄
  */
-function getMedicationLogByScheduleAndDate(scheduleId, date) {
-  return data.medicationLogs.find(
-    log => log.schedule_id === scheduleId && log.date === date
-  ) || null;
+async function getMedicationLogByScheduleAndDate(scheduleId, date) {
+  const result = await pool.query(
+    'SELECT * FROM medication_logs WHERE schedule_id = $1 AND date = $2',
+    [scheduleId, date]
+  );
+  return result.rows[0] || null;
 }
 
 /**
  * 更新服藥記錄狀態
  */
-function updateMedicationLogStatus(logId, status, additionalData = {}) {
-  const logIndex = data.medicationLogs.findIndex(log => log.id === logId);
-  if (logIndex === -1) return null;
-
-  const log = data.medicationLogs[logIndex];
-  log.status = status;
-
+async function updateMedicationLogStatus(logId, status, additionalData = {}) {
+  const updates = ['status = $1'];
+  const values = [status];
+  let paramIndex = 2;
+  
   if (status === 'TAKEN' && additionalData.takenAt) {
-    log.taken_at = additionalData.takenAt;
+    updates.push(`taken_at = $${paramIndex++}`);
+    values.push(additionalData.takenAt);
   }
-
+  
   if (additionalData.retryCount !== undefined) {
-    log.retry_count = additionalData.retryCount;
+    updates.push(`retry_count = $${paramIndex++}`);
+    values.push(additionalData.retryCount);
   }
-
+  
   if (additionalData.lastRemindedAt) {
-    log.last_reminded_at = additionalData.lastRemindedAt;
+    updates.push(`last_reminded_at = $${paramIndex++}`);
+    values.push(additionalData.lastRemindedAt);
   }
-
-  // 更新中藥提醒觸發標記
+  
   if (additionalData.chineseMedicineTriggered !== undefined) {
-    log.chinese_medicine_triggered = additionalData.chineseMedicineTriggered;
+    updates.push(`chinese_medicine_triggered = $${paramIndex++}`);
+    values.push(additionalData.chineseMedicineTriggered);
   }
-
-  data.medicationLogs[logIndex] = log;
-  saveDatabase();
-  return log;
+  
+  values.push(logId);
+  
+  const result = await pool.query(
+    `UPDATE medication_logs SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    values
+  );
+  return result.rows[0] || null;
 }
 
 /**
  * 取得當天的所有待提醒記錄
  */
-function getPendingLogsForDate(date) {
-  return data.medicationLogs
-    .filter(log => log.date === date && (log.status === 'PENDING' || log.status === 'SNOOZED'))
-    .map(log => {
-      const schedule = data.schedules.find(s => s.id === log.schedule_id);
-      const user = data.users.find(u => u.id === log.user_id);
-      return {
-        ...log,
-        meal_type: schedule ? schedule.meal_type : '',
-        default_time: schedule ? schedule.default_time : '',
-        medicines: schedule ? schedule.medicines : '[]',
-        is_second_dose: schedule ? schedule.is_second_dose : 0,
-        linked_schedule_id: schedule ? schedule.linked_schedule_id : null,
-        line_user_id: user ? user.line_user_id : ''
-      };
-    });
+async function getPendingLogsForDate(date) {
+  const result = await pool.query(
+    `SELECT ml.*, s.meal_type, s.default_time, s.medicines, s.is_second_dose, s.linked_schedule_id, u.line_user_id
+     FROM medication_logs ml
+     JOIN schedules s ON ml.schedule_id = s.id
+     JOIN users u ON ml.user_id = u.id
+     WHERE ml.date = $1 AND (ml.status = 'PENDING' OR ml.status = 'SNOOZED')`,
+    [date]
+  );
+  
+  return result.rows.map(row => ({
+    ...row,
+    is_second_dose: row.is_second_dose ? 1 : 0
+  }));
 }
 
 /**
  * 關閉數據庫連接
  */
-function closeDatabase() {
-  saveDatabase();
-  console.log('✅ 數據已保存');
+async function closeDatabase() {
+  if (pool) {
+    await pool.end();
+    console.log('✅ PostgreSQL 連接已關閉');
+  }
 }
 
 module.exports = {

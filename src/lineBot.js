@@ -214,11 +214,11 @@ async function handleWebhookEvent(bot, event, db) {
     console.log('📥 收到 Postback:', postback);
     
     const userId = event.source.userId;
-    let user = getUserByLineId(userId);
+    let user = await getUserByLineId(userId);
     
     // 如果用戶不存在，建立新用戶
     if (!user) {
-      user = createUser(userId, event.source.userId);
+      user = await createUser(userId, event.source.userId);
       console.log(`✅ 新用戶註冊: ${userId}`);
       
       // 為新用戶建立預設排程
@@ -228,11 +228,11 @@ async function handleWebhookEvent(bot, event, db) {
     // 處理「吃過了」
     if (postback.action === 'taken') {
       const today = new Date().toISOString().split('T')[0];
-      const log = getMedicationLogByScheduleAndDate(postback.scheduleId, today);
+      const log = await getMedicationLogByScheduleAndDate(postback.scheduleId, today);
       
       if (log) {
         const now = new Date().toISOString();
-        const schedule = getScheduleById(postback.scheduleId);
+        const schedule = await getScheduleById(postback.scheduleId);
         
         // 發送確認訊息
         await sendTextMessage(bot, userId, '✅ 已記錄！太棒了，記得按時服藥有助於健康！');
@@ -252,7 +252,7 @@ async function handleWebhookEvent(bot, event, db) {
           await sendTextMessage(bot, userId, '💡 提醒：1 小時後會發送中藥提醒，記得服用哦！');
         } else {
           // 一般情況（午餐、晚餐或中藥）
-          updateMedicationLogStatus(log.id, 'TAKEN', {
+          await updateMedicationLogStatus(log.id, 'TAKEN', {
             takenAt: now,
             retryCount: postback.retryCount
           });
@@ -264,14 +264,14 @@ async function handleWebhookEvent(bot, event, db) {
     // 注意：不再使用 setTimeout，由 Cron Job 在 30 分鐘後自動發送提醒
     if (postback.action === 'snooze') {
       const today = new Date().toISOString().split('T')[0];
-      const log = getMedicationLogByScheduleAndDate(postback.scheduleId, today);
-      const schedule = getScheduleById(postback.scheduleId);
+      const log = await getMedicationLogByScheduleAndDate(postback.scheduleId, today);
+      const schedule = await getScheduleById(postback.scheduleId);
       
       if (log) {
         const newRetryCount = postback.retryCount + 1;
         
         // 更新狀態為 SNOOZED
-        updateMedicationLogStatus(log.id, 'SNOOZED', {
+        await updateMedicationLogStatus(log.id, 'SNOOZED', {
           retryCount: newRetryCount,
           lastRemindedAt: new Date().toISOString()
         });
@@ -281,7 +281,7 @@ async function handleWebhookEvent(bot, event, db) {
           await sendTextMessage(bot, userId, `⏰ 好的，下一次提醒將在 30 分鐘後發送（已提醒 ${newRetryCount}/3 次）`);
         } else {
           // 超過 3 次，標記為 MISSED
-          updateMedicationLogStatus(log.id, 'MISSED', {
+          await updateMedicationLogStatus(log.id, 'MISSED', {
             retryCount: newRetryCount,
             lastRemindedAt: new Date().toISOString()
           });
@@ -298,11 +298,11 @@ async function handleWebhookEvent(bot, event, db) {
     const userId = event.source.userId;
     const messageText = event.message.text;
     
-    let user = getUserByLineId(userId);
+    let user = await getUserByLineId(userId);
     
     // 如果用戶不存在，建立新用戶
     if (!user) {
-      user = createUser(userId, userId);
+      user = await createUser(userId, userId);
       console.log(`✅ 新用戶註冊: ${userId}`);
       
       // 為新用戶建立預設排程
@@ -316,13 +316,13 @@ async function handleWebhookEvent(bot, event, db) {
       await sendTextMessage(bot, userId, '✅ 吃藥提醒排程已設定完成！\n\n📅 提醒時間：\n• 早餐後 08:00 - 高血壓（西藥）\n• 早餐後 09:00 - 高血壓（中藥）\n• 午餐後 13:00 - 高血壓（中藥）\n• 晚餐後 19:00 - 高血壓（中藥）\n\n您將在每次用藥時間收到提醒訊息！');
     }
     else if (messageText === '查詢提醒' || messageText === '/status') {
-      const schedules = getSchedulesByUserId(user.id);
+      const schedules = await getSchedulesByUserId(user.id);
       const today = new Date().toISOString().split('T')[0];
       
       let statusText = '📋 今日服藥狀態：\n\n';
       
       for (const schedule of schedules) {
-        const log = getMedicationLogByScheduleAndDate(schedule.id, today);
+        const log = await getMedicationLogByScheduleAndDate(schedule.id, today);
         const status = log ? log.status : 'N/A';
         const statusEmoji = status === 'TAKEN' ? '✅' : status === 'MISSED' ? '❌' : '⏳';
         statusText += `${statusEmoji} ${schedule.meal_type}: ${status}\n`;
@@ -387,10 +387,10 @@ async function setupDefaultSchedules(userId) {
   const { createSchedule, getSchedulesByUserId, createMedicationLog } = db;
   
   // 清除現有排程
-  const existingSchedules = getSchedulesByUserId(userId);
+  const existingSchedules = await getSchedulesByUserId(userId);
   
   // 建立早餐第一劑（西藥）
-  const breakfastFirst = createSchedule(
+  const breakfastFirst = await createSchedule(
     userId,
     '早餐後（西藥）',
     '08:00',
@@ -399,7 +399,7 @@ async function setupDefaultSchedules(userId) {
   );
   
   // 建立早餐第二劑（中藥）- 關聯到第一劑
-  const breakfastSecond = createSchedule(
+  const breakfastSecond = await createSchedule(
     userId,
     '早餐後（中藥）',
     '09:00',
@@ -408,7 +408,7 @@ async function setupDefaultSchedules(userId) {
   );
   
   // 建立午餐提醒（中藥）
-  const lunchSchedule = createSchedule(
+  const lunchSchedule = await createSchedule(
     userId,
     '午餐後',
     '13:00',
@@ -416,7 +416,7 @@ async function setupDefaultSchedules(userId) {
   );
   
   // 建立晚餐提醒（中藥）
-  const dinnerSchedule = createSchedule(
+  const dinnerSchedule = await createSchedule(
     userId,
     '晚餐後',
     '19:00',
@@ -425,10 +425,10 @@ async function setupDefaultSchedules(userId) {
   
   // 立即創建當天的服藥記錄
   const today = new Date().toISOString().split('T')[0];
-  createMedicationLog(breakfastFirst.id, userId, today);
-  createMedicationLog(breakfastSecond.id, userId, today);
-  createMedicationLog(lunchSchedule.id, userId, today);
-  createMedicationLog(dinnerSchedule.id, userId, today);
+  await createMedicationLog(breakfastFirst.id, userId, today);
+  await createMedicationLog(breakfastSecond.id, userId, today);
+  await createMedicationLog(lunchSchedule.id, userId, today);
+  await createMedicationLog(dinnerSchedule.id, userId, today);
   
   console.log(`✅ 用戶 ${userId} 的排程已建立`);
 }
@@ -449,7 +449,7 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
   
   setTimeout(async () => {
     const today = new Date().toISOString().split('T')[0];
-    const schedules = getSchedulesByUserId(user.id);
+    const schedules = await getSchedulesByUserId(user.id);
     const chineseSchedule = schedules.find(s => s.meal_type === '早餐後（中藥）');
     
     if (!chineseSchedule) {
@@ -457,7 +457,7 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
       return;
     }
     
-    const log = getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
+    const log = await getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
     
     // 如果中藥已經服用，跳過
     if (log && log.status === 'TAKEN') {
@@ -481,7 +481,7 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
     
     // 更新狀態
     if (log) {
-      updateMedicationLogStatus(log.id, 'SNOOZED', {
+      await updateMedicationLogStatus(log.id, 'SNOOZED', {
         retryCount: reminderCount + 1,
         lastRemindedAt: new Date().toISOString()
       });
