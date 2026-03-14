@@ -16,6 +16,7 @@ async function initDatabase() {
   const connectionString = process.env.DATABASE_URL;
   
   console.log('🔍 檢查環境變數...');
+  console.log('   所有環境變數:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('PG') || k.includes('POSTGRES')).join(', ') || '無');
   console.log('   DATABASE_URL:', connectionString ? '已設定' : '未設定');
   
   if (!connectionString) {
