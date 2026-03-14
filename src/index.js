@@ -16,11 +16,11 @@ const { initDatabase, getDb } = require('./database');
 const { createBot, handleWebhookEvent } = require('./lineBot');
 const { createScheduler } = require('./scheduler');
 
-async function main() {
-  // 初始化
-  const app = express();
-  const port = process.env.PORT || 3000;
+// 初始化 Express app（全局）
+const app = express();
+const port = process.env.PORT || 3000;
 
+async function main() {
   // 中間件
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
