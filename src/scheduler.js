@@ -91,6 +91,7 @@ function createScheduler(bot, db) {
     for (const user of users) {
       // 查找對應的排程
       const schedules = await getSchedulesByUserId(user.id);
+      console.log(`   - 用戶 ${user.id} 的排程:`, schedules.map(s => s.meal_type));
       const schedule = schedules.find(s => s.meal_type === mealType);
       
       if (!schedule) {

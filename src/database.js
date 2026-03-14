@@ -268,6 +268,7 @@ function getDb() {
     getSchedulesByUserId: async (userId) => {
       if (pool) {
         const result = await pool.query('SELECT * FROM schedules WHERE user_id = $1', [userId]);
+        console.log('   [DB] getSchedulesByUserId 返回:', result.rows.length, '條記錄');
         return result.rows.map(row => ({
           ...row,
           medicines: typeof row.medicines === 'string' ? JSON.parse(row.medicines) : row.medicines,
