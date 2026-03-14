@@ -78,14 +78,17 @@ async function initDatabase() {
   
   // 嘗試 PostgreSQL 連接
   if (connectionString) {
+    console.log('   連接字串:', connectionString.substring(0, 50) + '...');
+    
+    // 嘗試帶 SSL 的連接
     try {
       pool = new Pool({
         connectionString: connectionString,
-        ssl: { rejectUnauthorized: false }
+        ssl: { rejectUnauthorized: false, require: true }
       });
       
       const client = await pool.connect();
-      console.log('✅ PostgreSQL 連接成功');
+      console.log('✅ PostgreSQL 連接成功 (SSL)');
       client.release();
       
       // 創建表
@@ -93,9 +96,28 @@ async function initDatabase() {
       console.log('✅ 數據庫初始化完成');
       return getDb();
     } catch (error) {
-      console.log('⚠️ PostgreSQL 連接失敗:', error.message);
-      console.log('⚠️ 回退到 JSON 文件存儲');
-      pool = null;
+      console.log('⚠️ SSL 連接失敗:', error.message);
+      
+      // 嘗試不使用 SSL
+      try {
+        pool = new Pool({
+          connectionString: connectionString,
+          ssl: false
+        });
+        
+        const client = await pool.connect();
+        console.log('✅ PostgreSQL 連接成功 (非SSL)');
+        client.release();
+        
+        // 創建表
+        await createTables();
+        console.log('✅ 數據庫初始化完成');
+        return getDb();
+      } catch (error2) {
+        console.log('⚠️ 非SSL 連接也失敗:', error2.message);
+        console.log('⚠️ 回退到 JSON 文件存儲');
+        pool = null;
+      }
     }
   } else {
     console.log('⚠️ 沒有 PostgreSQL 連接字串');
