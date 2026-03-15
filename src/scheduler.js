@@ -41,6 +41,7 @@ function createScheduler(bot, db) {
   /**
    * 初始化當日排程
    * 每天 00:00 執行，為每個用戶建立當日的服藥記錄
+   * 同時檢查並補全缺失的排程
    */
   const initDailySchedule = async () => {
     const users = await getAllUsers();
@@ -49,8 +50,35 @@ function createScheduler(bot, db) {
     console.log(`📅 初始化 ${today} 的排程...`);
     
     for (const user of users) {
-      const schedules = await getSchedulesByUserId(user.id);
+      let schedules = await getSchedulesByUserId(user.id);
       
+      // 檢查並補全缺失的排程
+      const requiredMealTypes = ['早餐後（西藥）', '早餐後（中藥）', '午餐後', '晚餐後'];
+      const existingMealTypes = schedules.map(s => s.meal_type);
+      
+      for (const mealType of requiredMealTypes) {
+        if (!existingMealTypes.includes(mealType)) {
+          console.log(`⚠️ 補全缺失排程: ${user.line_user_id} - ${mealType}`);
+          
+          let defaultTime = '08:00';
+          if (mealType === '早餐後（中藥）') defaultTime = '09:00';
+          if (mealType === '午餐後') defaultTime = '13:00';
+          if (mealType === '晚餐後') defaultTime = '19:00';
+          
+          await db.createSchedule(
+            user.id,
+            mealType,
+            defaultTime,
+            ['高血壓（中藥）'],
+            mealType === '早餐後（中藥）' ? { isSecondDose: true } : {}
+          );
+          
+          // 重新獲取排程
+          schedules = await getSchedulesByUserId(user.id);
+        }
+      }
+      
+      // 為每個排程創建當天的服藥記錄
       for (const schedule of schedules) {
         // 檢查當日記錄是否已存在
         const existingLog = await getMedicationLogByScheduleAndDate(schedule.id, today);
@@ -216,37 +244,14 @@ function createScheduler(bot, db) {
       sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // 09:30 - 第4次提醒（超過3次）
+    // ==================== 早餐（中藥）備用===================
+    // 09:30 - 備用提醒（如果用戶沒回應）
     cron.schedule('30 9 * * *', () => {
-      sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
-    });
-    
-    // ==================== 早餐（中藥）===================
-    // 10:30 - 備用提醒時間（西藥最後一次提醒後1小時）
-    // 如果用戶已經點擊吃過，會由 lineBot.js 的 setTimeout 提前發送
-    // 這裡作為備用：如果用戶都沒回覆，10:30 發送中藥提醒
-    // 然後每30分鐘繼續提醒：11:00, 11:30, 12:00
-    cron.schedule('30 10 * * *', () => {
-      sendChineseMedicineReminderBackup();
-    });
-    
-    // 11:00 - 第2次提醒
-    cron.schedule('0 11 * * *', () => {
-      sendChineseMedicineReminderBackup();
-    });
-    
-    // 11:30 - 第3次提醒
-    cron.schedule('30 11 * * *', () => {
-      sendChineseMedicineReminderBackup();
-    });
-    
-    // 12:00 - 第4次提醒（超過3次）
-    cron.schedule('0 12 * * *', () => {
-      sendChineseMedicineReminderBackup();
+      sendChineseMedicineReminderBackup().catch(err => console.error('❌ 錯誤:', err));
     });
     
     // ==================== 午餐（中藥）===================
-    // 13:00 - 第1次提醒
+    // 13:00 - 備用提醒（固定時間）
     cron.schedule('0 13 * * *', () => {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
@@ -261,13 +266,8 @@ function createScheduler(bot, db) {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // 14:30 - 第4次提醒（超過3次）
-    cron.schedule('30 14 * * *', () => {
-      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
-    });
-    
     // ==================== 晚餐（中藥）===================
-    // 19:00 - 第1次提醒
+    // 19:00 - 備用提醒（固定時間）
     cron.schedule('0 19 * * *', () => {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
@@ -282,26 +282,13 @@ function createScheduler(bot, db) {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // 20:30 - 第4次提醒（超過3次）
-    cron.schedule('30 20 * * *', () => {
-      sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
-    });
-    
-    // ==================== 測試排程 ====================
-    // 16:15 - 測試午餐提醒
-    cron.schedule('15 16 * * *', () => {
-      console.log('🔔 觸發 16:15 午餐提醒 cron');
-      sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
-    });
-    
     console.log('✅ 所有排程任務已啟動');
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
-    console.log('   • 08:00-09:30 早餐（西藥）提醒 × 4');
-    console.log('   • 10:30-12:00 早餐（中藥）備用提醒 × 4');
-    console.log('   • 13:00-14:30 午餐提醒 × 4');
-    console.log('   • 19:00-20:30 晚餐提醒 × 4');
-    console.log('   • 16:15 測試午餐提醒');
+    console.log('   • 08:00-09:00 早餐（西藥）提醒 × 3');
+    console.log('   • 09:30 早餐（中藥）備用提醒');
+    console.log('   • 13:00-14:00 午餐（中藥）提醒 × 3');
+    console.log('   • 19:00-20:00 晚餐（中藥）提醒 × 3');
     
     // 啟動時顯示時間
     const now = getTaiwanTime();

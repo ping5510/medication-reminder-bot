@@ -389,52 +389,71 @@ async function setupDefaultSchedules(userId) {
   console.log('[setupDefaultSchedules] db 對象:', Object.keys(db));
   const { createSchedule, getSchedulesByUserId, createMedicationLog } = db;
   
-  // 清除現有排程
+  // 檢查現有排程
   const existingSchedules = await getSchedulesByUserId(userId);
   console.log('[setupDefaultSchedules] 現有排程數量:', existingSchedules.length);
+  console.log('[setupDefaultSchedules] 現有排程:', existingSchedules.map(s => s.meal_type));
+  
+  const today = new Date().toISOString().split('T')[0];
   
   // 建立早餐第一劑（西藥）
-  const breakfastFirst = await createSchedule(
-    userId,
-    '早餐後（西藥）',
-    '08:00',
-    ['高血壓（西藥）'],
-    { isSecondDose: false, linkDelayMinutes: 60 }
-  );
+  const breakfastFirst = existingSchedules.find(s => s.meal_type === '早餐後（西藥）');
+  if (!breakfastFirst) {
+    await createSchedule(
+      userId,
+      '早餐後（西藥）',
+      '08:00',
+      ['高血壓（西藥）'],
+      { isSecondDose: false, linkDelayMinutes: 60 }
+    );
+  }
   
-  // 建立早餐第二劑（中藥）- 關聯到第一劑
-  const breakfastSecond = await createSchedule(
-    userId,
-    '早餐後（中藥）',
-    '09:00',
-    ['高血壓（中藥）'],
-    { isSecondDose: true, linkedScheduleId: breakfastFirst.id, linkDelayMinutes: 60 }
-  );
+  // 建立早餐第二劑（中藥）
+  const breakfastSecond = existingSchedules.find(s => s.meal_type === '早餐後（中藥）');
+  if (!breakfastSecond) {
+    await createSchedule(
+      userId,
+      '早餐後（中藥）',
+      '09:00',
+      ['高血壓（中藥）'],
+      { isSecondDose: true, linkDelayMinutes: 60 }
+    );
+  }
   
   // 建立午餐提醒（中藥）
-  const lunchSchedule = await createSchedule(
-    userId,
-    '午餐後',
-    '13:00',
-    ['高血壓（中藥）']
-  );
+  const lunchSchedule = existingSchedules.find(s => s.meal_type === '午餐後');
+  if (!lunchSchedule) {
+    await createSchedule(
+      userId,
+      '午餐後',
+      '13:00',
+      ['高血壓（中藥）']
+    );
+  }
   
   // 建立晚餐提醒（中藥）
-  const dinnerSchedule = await createSchedule(
-    userId,
-    '晚餐後',
-    '19:00',
-    ['高血壓（中藥）']
-  );
+  const dinnerSchedule = existingSchedules.find(s => s.meal_type === '晚餐後');
+  if (!dinnerSchedule) {
+    await createSchedule(
+      userId,
+      '晚餐後',
+      '19:00',
+      ['高血壓（中藥）']
+    );
+  }
   
-  // 立即創建當天的服藥記錄
-  const today = new Date().toISOString().split('T')[0];
-  await createMedicationLog(breakfastFirst.id, userId, today);
-  await createMedicationLog(breakfastSecond.id, userId, today);
-  await createMedicationLog(lunchSchedule.id, userId, today);
-  await createMedicationLog(dinnerSchedule.id, userId, today);
+  // 重新獲取所有排程
+  const allSchedules = await getSchedulesByUserId(userId);
   
-  console.log(`✅ 用戶 ${userId} 的排程已建立`);
+  // 為每個排程創建當天的服藥記錄（如果不存在）
+  for (const schedule of allSchedules) {
+    const existingLog = await db.getMedicationLogByScheduleAndDate(schedule.id, today);
+    if (!existingLog) {
+      await createMedicationLog(schedule.id, userId, today);
+    }
+  }
+  
+  console.log(`✅ 用戶 ${userId} 的排程已建立/補全，共 ${allSchedules.length} 個排程`);
 }
 
 /**
