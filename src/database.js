@@ -232,12 +232,13 @@ function getDb() {
     createSchedule: async (...args) => {
       console.log('   [DB] createSchedule 調用:', { argsLength: args.length, args: JSON.stringify(args) });
       
-      // 兼容舊調用格式: (userId, mealType, defaultTime, medicines, options)
+      // 兼容舊調用格式: (userId, mealType, defaultTime, medicines) 或 (userId, mealType, defaultTime, medicines, options)
       // 新格式: (userId, scheduleData)
       let userId, scheduleData;
       
-      if (args.length >= 5) {
-        // 舊格式
+      // 舊格式有 4 個或 5 個參數，第一個是 userId 字串
+      if (typeof args[0] === 'string' && args[0].includes('-') && (args.length === 4 || args.length === 5)) {
+        // 舊格式: (userId, mealType, defaultTime, medicines, options?)
         userId = args[0];
         scheduleData = {
           meal_type: args[1],
@@ -247,7 +248,7 @@ function getDb() {
           linked_schedule_id: args[4]?.linkedScheduleId || null
         };
       } else {
-        // 新格式
+        // 新格式: (userId, scheduleData)
         userId = args[0];
         scheduleData = args[1];
       }
@@ -302,25 +303,41 @@ function getDb() {
     },
     
     // 用藥記錄操作
-    createMedicationLog: async (userId, scheduleId, date) => {
-      // 兼容調用: (userId, scheduleId, date) 或 (scheduleId, userId, date)
-      // 嘗試檢測參數類型
-      if (typeof scheduleId === 'string' && scheduleId.includes('-') && typeof date !== 'string') {
-        // 可能是 (scheduleId, userId, date) 格式
-        const temp = scheduleId;
-        scheduleId = userId;
-        userId = temp;
+    createMedicationLog: async (scheduleId, userId, date) => {
+      // 兼容調用格式:
+      // - (scheduleId, userId, date) - scheduler.js initDailySchedule 用
+      // - (userId, scheduleId, date) - 其他地方可能用
+      // 判斷：第一個參數是 scheduleId（schedules 表的 id）還是 userId
+      
+      // 如果第一個參數看起來像 scheduleId（調用時傳的是 schedule.id）
+      let finalScheduleId, finalUserId, finalDate;
+      
+      if (typeof arguments[0] === 'string' && arguments[0].includes('-')) {
+        // 檢查是 scheduleId 還是 userId
+        // 可以通過長度或前綴判斷，UUID 都是一樣的格式
+        // 最簡單：假設調用者知道自己在幹嘛
+        // 讓我們看調用場景：
+        // - scheduler.js: createMedicationLog(schedule.id, user.id, today) - 參數順序是 scheduleId, userId, date
+        // - lineBot.js setupDefaultSchedules: createMedicationLog(breakfastFirst.id, userId, today) - 也是 scheduleId, userId, date
+        // 所以應該是 (scheduleId, userId, date)
+        finalScheduleId = arguments[0];
+        finalUserId = arguments[1];
+        finalDate = arguments[2];
+      } else {
+        finalScheduleId = scheduleId;
+        finalUserId = userId;
+        finalDate = date;
       }
       
       if (pool) {
         const id = uuidv4();
         await pool.query(
           'INSERT INTO medication_logs (id, user_id, schedule_id, date, status) VALUES ($1, $2, $3, $4, $5)',
-          [id, userId, scheduleId, date, 'PENDING']
+          [id, finalUserId, finalScheduleId, finalDate, 'PENDING']
         );
-        return { id, user_id: userId, schedule_id: scheduleId, date, status: 'PENDING' };
+        return { id, user_id: finalUserId, schedule_id: finalScheduleId, date: finalDate, status: 'PENDING' };
       } else {
-        const log = { id: uuidv4(), user_id: userId, schedule_id: scheduleId, date, status: 'PENDING', chinese_medicine_triggered: false, created_at: new Date().toISOString() };
+        const log = { id: uuidv4(), user_id: finalUserId, schedule_id: finalScheduleId, date: finalDate, status: 'PENDING', chinese_medicine_triggered: false, created_at: new Date().toISOString() };
         medicationLogs.push(log);
         saveToFile();
         return log;
