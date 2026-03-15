@@ -276,11 +276,23 @@ function getDb() {
       if (pool) {
         const result = await pool.query('SELECT * FROM schedules WHERE user_id = $1', [userId]);
         console.log('   [DB] getSchedulesByUserId 返回:', result.rows.length, '條記錄');
-        return result.rows.map(row => ({
-          ...row,
-          medicines: typeof row.medicines === 'string' ? JSON.parse(row.medicines) : row.medicines,
-          is_second_dose: row.is_second_dose ? 1 : 0
-        }));
+        return result.rows.map(row => {
+          let medicines = row.medicines;
+          // 兼容多種格式：JSON 字串、純字串、數組
+          if (typeof medicines === 'string') {
+            try {
+              medicines = JSON.parse(medicines);
+            } catch (e) {
+              // 如果解析失敗，可能是純字串，直接包裝成數組
+              medicines = [medicines];
+            }
+          }
+          return {
+            ...row,
+            medicines: medicines,
+            is_second_dose: row.is_second_dose ? 1 : 0
+          };
+        });
       } else {
         return schedules.filter(s => s.user_id === userId);
       }
@@ -290,9 +302,18 @@ function getDb() {
       if (pool) {
         const result = await pool.query('SELECT * FROM schedules WHERE id = $1', [scheduleId]);
         if (result.rows[0]) {
+          let medicines = result.rows[0].medicines;
+          // 兼容多種格式
+          if (typeof medicines === 'string') {
+            try {
+              medicines = JSON.parse(medicines);
+            } catch (e) {
+              medicines = [medicines];
+            }
+          }
           return {
             ...result.rows[0],
-            medicines: typeof result.rows[0].medicines === 'string' ? JSON.parse(result.rows[0].medicines) : result.rows[0].medicines,
+            medicines: medicines,
             is_second_dose: result.rows[0].is_second_dose ? 1 : 0
           };
         }

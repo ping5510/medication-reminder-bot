@@ -139,10 +139,10 @@ function createScheduler(bot, db) {
         continue;
       }
       
-      // 發送提醒
+      // 發送提醒 - medicines 已經是解析後的格式
       const scheduleInfo = {
         mealType: schedule.meal_type,
-        medicines: JSON.parse(schedule.medicines),
+        medicines: schedule.medicines,
         scheduleId: schedule.id,
         retryCount: retryCount,
         isSecondDose: schedule.is_second_dose
