@@ -168,6 +168,18 @@ async function createTables() {
     )
   `);
   
+  // 添加重試次數和最後提醒時間
+  try {
+    await pool.query(`ALTER TABLE medication_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`);
+  } catch (e) {
+    // 忽略列已存在的錯誤
+  }
+  try {
+    await pool.query(`ALTER TABLE medication_logs ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
+  } catch (e) {
+    // 忽略列已存在的錯誤
+  }
+  
   // 添加中藥觸發標記
   try {
     await pool.query(`ALTER TABLE medication_logs ADD COLUMN IF NOT EXISTS chinese_medicine_triggered BOOLEAN DEFAULT false`);
@@ -377,17 +389,62 @@ function getDb() {
       }
     },
     
-    updateMedicationLogStatus: async (logId, status, takenAt = null) => {
+    updateMedicationLogStatus: async (logId, status, extraData = null) => {
+      // 兼容處理：extraData 可以是 timestamp（takenAt）或包含 retryCount/lastRemindedAt/chineseMedicineTriggered 的對象
+      let takenAt = null;
+      let retryCount = null;
+      let lastRemindedAt = null;
+      let chineseMedicineTriggered = null;
+      
+      if (extraData) {
+        if (typeof extraData === 'string' || extraData instanceof Date) {
+          // 直接傳入 timestamp
+          takenAt = extraData;
+        } else if (typeof extraData === 'object') {
+          // 傳入對象，提取相關字段
+          takenAt = extraData.takenAt || null;
+          retryCount = extraData.retryCount !== undefined ? extraData.retryCount : null;
+          lastRemindedAt = extraData.lastRemindedAt || null;
+          chineseMedicineTriggered = extraData.chineseMedicineTriggered !== undefined ? extraData.chineseMedicineTriggered : null;
+        }
+      }
+      
       if (pool) {
+        // 構建動態更新語句
+        const updates = ['status = $1'];
+        const values = [status];
+        let paramIndex = 2;
+        
+        if (takenAt) {
+          updates.push(`taken_at = $${paramIndex++}`);
+          values.push(takenAt);
+        }
+        if (retryCount !== null) {
+          updates.push(`retry_count = $${paramIndex++}`);
+          values.push(retryCount);
+        }
+        if (lastRemindedAt) {
+          updates.push(`last_reminded_at = $${paramIndex++}`);
+          values.push(lastRemindedAt);
+        }
+        if (chineseMedicineTriggered !== null) {
+          updates.push(`chinese_medicine_triggered = $${paramIndex++}`);
+          values.push(chineseMedicineTriggered);
+        }
+        
+        values.push(logId);
         await pool.query(
-          'UPDATE medication_logs SET status = $1, taken_at = $2 WHERE id = $3',
-          [status, takenAt, logId]
+          `UPDATE medication_logs SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+          values
         );
       } else {
         const log = medicationLogs.find(l => l.id === logId);
         if (log) {
           log.status = status;
-          log.taken_at = takenAt;
+          if (takenAt) log.taken_at = takenAt;
+          if (retryCount !== null) log.retry_count = retryCount;
+          if (lastRemindedAt) log.last_reminded_at = lastRemindedAt;
+          if (chineseMedicineTriggered !== null) log.chinese_medicine_triggered = chineseMedicineTriggered;
           saveToFile();
         }
       }
