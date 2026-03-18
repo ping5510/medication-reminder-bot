@@ -14,6 +14,7 @@
     "NODE_ENV": "production",
     "PORT": "3000",
     "TIMEZONE": "Asia/Taipei",
-    "DATABASE_URL": "postgresql://root:DwYrcms2h975xHNedf81Q0KFv3u4I6jk@hnd1.clusters.zeabur.com:31748/zeabur"
+    "DATABASE_URL": "postgresql://root:DwYrcms2h975xHNedf81Q0KFv3u4I6jk@hnd1.clusters.zeabur.com:31748/zeabur",
+    "TELEGRAM_BOT_TOKEN": "8570984522:AAFGvKEicRpdaEpLLshMeHtlK-ManQusKrY"
   }
 }

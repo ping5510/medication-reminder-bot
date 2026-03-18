@@ -32,11 +32,16 @@ function getTaiwanDateString() {
 
 /**
  * 建立排程器
+ * @param {object} lineBot - LINE Bot 實例
+ * @param {object} telegramBot - Telegram Bot 實例
+ * @param {object} db - 數據庫操作對象
  */
-function createScheduler(bot, db) {
-  const { getAllUsers, getSchedulesByUserId, createMedicationLog, getMedicationLogByScheduleAndDate, updateMedicationLogStatus } = db;
+function createScheduler(lineBot, telegramBot, db) {
+  const { getAllUsers, getSchedulesByUserId, createMedicationLog, getMedicationLogByScheduleAndDate, updateMedicationLogStatus, getUserByTelegramId } = db;
   
   console.log('✅ 排程器初始化完成');
+  console.log('   - LINE Bot:', lineBot ? '已連接' : '未設定');
+  console.log('   - Telegram Bot:', telegramBot && telegramBot.isInitialized() ? '已連接' : '未設定');
   
   /**
    * 初始化當日排程
@@ -95,14 +100,15 @@ function createScheduler(bot, db) {
   };
   
   /**
-   * 發送用藥提醒（通用函數）
+   * 發送用藥提醒（通用函數）- 支持多通道
    * @param {string} mealType - 用藥類型（如「早餐後（西藥）」）
+   * @param {string} channel - 通道类型：'line', 'telegram', 'both'
    */
-  const sendReminderForMealType = async (mealType) => {
+  const sendReminderForMealType = async (mealType, channel = 'both') => {
     const users = await getAllUsers();
     const today = getTaiwanDateString();
     
-    console.log(`🔔 檢查 ${mealType} 提醒...`);
+    console.log(`🔔 檢查 ${mealType} 提醒... (通道: ${channel})`);
     
     if (users.length === 0) {
       console.log('⚠️ 沒有找到任何用戶');
@@ -111,15 +117,9 @@ function createScheduler(bot, db) {
     console.log(`   - 用戶數量: ${users.length}`);
     console.log(`   - 日期: ${today}`);
     
-    if (users.length === 0) {
-      console.log('⚠️ 沒有找到任何用戶');
-      return;
-    }
-    
     for (const user of users) {
       // 查找對應的排程
       const schedules = await getSchedulesByUserId(user.id);
-      console.log(`   - 用戶 ${user.id} 的排程:`, schedules.map(s => s.meal_type));
       const schedule = schedules.find(s => s.meal_type === mealType);
       
       if (!schedule) {
@@ -146,28 +146,10 @@ function createScheduler(bot, db) {
         continue;
       }
       
-      // 忽略第一劑檢查：中藥可以獨立發送提醒
-      // （用戶可能會選擇先吃中藥或西藥，不應該強制綁定）
-      
       // 檢查重試次數
       const retryCount = log.retry_count || 0;
       
-      // 動態獲取 lineBot 模組
-      const { sendReminderMessage, sendTextMessage } = require('./lineBot');
-      
-      if (retryCount >= 3) {
-        // 超過 3 次，發送最終提醒
-        if (log.status !== 'MISSED') {
-          await updateMedicationLogStatus(log.id, 'MISSED', {
-            lastRemindedAt: new Date().toISOString()
-          });
-          await sendTextMessage(bot, user.line_user_id, '⚠️ 已超過最大提醒次數（3次），請記得盡快服用藥物！');
-          console.log(`❌ 標記為未服藥: ${user.line_user_id} - ${mealType}`);
-        }
-        continue;
-      }
-      
-      // 發送提醒 - medicines 已經是解析後的格式
+      // 準備排程信息
       const scheduleInfo = {
         mealType: schedule.meal_type,
         medicines: schedule.medicines,
@@ -176,18 +158,48 @@ function createScheduler(bot, db) {
         isSecondDose: schedule.is_second_dose
       };
       
-      console.log(`📤 準備發送提醒: ${user.line_user_id} - ${mealType}`);
+      // 動態獲取發送函數
+      const { sendReminderMessage: sendLineReminder, sendTextMessage: sendLineText } = require('./lineBot');
+      const { sendReminderMessage: sendTelegramReminder, sendTextMessage: sendTelegramText } = require('./telegramBot');
       
-      await sendReminderMessage(bot, user.line_user_id, scheduleInfo);
+      // 決定發送目標
+      const lineUserId = user.line_user_id;
+      const telegramUserId = user.telegram_user_id;
       
-      // 更新狀態為 SNOOZED（表示用戶暫時不想吃）
+      console.log(`📤 準備發送提醒: ${mealType}`);
+      console.log(`   - LINE: ${lineUserId || '未設定'}`);
+      console.log(`   - Telegram: ${telegramUserId || '未設定'}`);
+      
+      // 發送 LINE 提醒
+      if ((channel === 'both' || channel === 'line') && lineBot && lineUserId) {
+        try {
+          console.log(`   📱 發送 LINE 提醒...`);
+          await sendLineReminder(lineBot, lineUserId, scheduleInfo);
+          console.log(`   ✅ LINE 提醒已發送`);
+        } catch (error) {
+          console.error(`   ❌ LINE 提醒發送失敗:`, error.message);
+        }
+      }
+      
+      // 發送 Telegram 提醒
+      if ((channel === 'both' || channel === 'telegram') && telegramBot && telegramBot.isInitialized() && telegramUserId) {
+        try {
+          console.log(`   📱 發送 Telegram 提醒...`);
+          await sendTelegramReminder(telegramUserId, scheduleInfo);
+          console.log(`   ✅ Telegram 提醒已發送`);
+        } catch (error) {
+          console.error(`   ❌ Telegram 提醒發送失敗:`, error.message);
+        }
+      }
+      
+      // 更新狀態為 SNOOZED
       const newRetryCount = retryCount + 1;
       await updateMedicationLogStatus(log.id, 'SNOOZED', {
         retryCount: newRetryCount,
         lastRemindedAt: new Date().toISOString()
       });
       
-      console.log(`✅ 提醒已發送: ${user.line_user_id} - ${mealType} (${newRetryCount}/3)`);
+      console.log(`✅ ${mealType} 提醒流程完成 (${newRetryCount}/3)`);
     }
   };
   
@@ -289,6 +301,9 @@ function createScheduler(bot, db) {
     console.log('   • 09:30 早餐（中藥）備用提醒');
     console.log('   • 13:00-14:00 午餐（中藥）提醒 × 3');
     console.log('   • 19:00-20:00 晚餐（中藥）提醒 × 3');
+    console.log('📱 通知通道：');
+    console.log('   • LINE:', lineBot ? '✅ 已啟用' : '❌ 未設定');
+    console.log('   • Telegram:', telegramBot && telegramBot.isInitialized() ? '✅ 已啟用' : '❌ 未設定');
     
     // 啟動時顯示時間
     const now = getTaiwanTime();

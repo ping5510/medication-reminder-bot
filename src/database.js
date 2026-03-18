@@ -137,11 +137,19 @@ async function createTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY,
-      line_user_id VARCHAR(255) UNIQUE NOT NULL,
+      line_user_id VARCHAR(255) UNIQUE,
+      telegram_user_id VARCHAR(255) UNIQUE,
       name VARCHAR(255),
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  
+  // 添加 telegram_user_id 欄位（如果不存在）
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_user_id VARCHAR(255)`);
+  } catch (e) {
+    // 忽略列已存在的錯誤
+  }
   
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schedules (
@@ -237,6 +245,57 @@ function getDb() {
         return result.rows;
       } else {
         return users;
+      }
+    },
+    
+    // Telegram 用戶操作
+    getUserByTelegramId: async (telegramUserId) => {
+      if (pool) {
+        const result = await pool.query('SELECT * FROM users WHERE telegram_user_id = $1', [telegramUserId]);
+        return result.rows[0] || null;
+      } else {
+        return users.find(u => u.telegram_user_id === telegramUserId) || null;
+      }
+    },
+    
+    updateUserChannel: async (userId, channel) => {
+      if (pool) {
+        if (channel === 'telegram') {
+          // Telegram 通道不需要更新 line_user_id
+          await pool.query('UPDATE users SET name = name WHERE id = $1', [userId]);
+        }
+      } else {
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          // 更新內存中的數據
+          saveToFile();
+        }
+      }
+    },
+    
+    // 創建或獲取 Telegram 用戶
+    createOrGetTelegramUser: async (telegramUserId, name) => {
+      if (pool) {
+        // 先查找
+        const existing = await pool.query('SELECT * FROM users WHERE telegram_user_id = $1', [telegramUserId]);
+        if (existing.rows[0]) {
+          return existing.rows[0];
+        }
+        // 創建新用戶
+        const id = uuidv4();
+        await pool.query(
+          'INSERT INTO users (id, telegram_user_id, name) VALUES ($1, $2, $3)',
+          [id, telegramUserId, name || 'Telegram User']
+        );
+        return { id, telegram_user_id: telegramUserId, name: name || 'Telegram User' };
+      } else {
+        let user = users.find(u => u.telegram_user_id === telegramUserId);
+        if (!user) {
+          user = { id: uuidv4(), telegram_user_id: telegramUserId, name: name || 'Telegram User', created_at: new Date().toISOString() };
+          users.push(user);
+          saveToFile();
+        }
+        return user;
       }
     },
     
