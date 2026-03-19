@@ -231,6 +231,7 @@ function isInitialized() {
 }
 
 module.exports = {
+  createTelegramBot: createBot,  // 別名
   createBot,
   sendReminderMessage,
   sendTextMessage,
