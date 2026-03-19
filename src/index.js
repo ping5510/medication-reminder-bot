@@ -224,8 +224,113 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     database: 'connected',
-    lineBot: bot ? 'connected' : 'not_configured'
+    lineBot: bot ? 'connected' : 'not_configured',
+    telegramBot: telegramBot && telegramBot.isInitialized() ? 'connected' : 'not_configured'
   });
+});
+
+// ========== 系統設定 API（安全的 Token 儲存）==========
+
+// 獲取設定
+app.get('/api/settings/:key', async (req, res) => {
+  const { key } = req.params;
+  
+  // 敏感設定不顯示完整值
+  const sensitiveKeys = ['TELEGRAM_BOT_TOKEN', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET'];
+  const isSensitive = sensitiveKeys.includes(key);
+  
+  try {
+    const value = await dbOps.getSetting(key);
+    if (value === null || value === undefined) {
+      return res.status(404).json({ error: '設定不存在' });
+    }
+    
+    res.json({
+      key,
+      value: isSensitive ? value.substring(0, 10) + '***' : value,
+      isSensitive
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 設置設定（安全儲存敏感資訊）
+app.post('/api/settings', async (req, res) => {
+  const { key, value } = req.body;
+  
+  if (!key || value === undefined) {
+    return res.status(400).json({ error: '缺少 key 或 value' });
+  }
+  
+  try {
+    await dbOps.setSetting(key, value);
+    console.log(`✅ 設定已保存: ${key}`);
+    
+    res.json({
+      success: true,
+      message: `設定 ${key} 已保存`,
+      key,
+      value: key.includes('TOKEN') || key.includes('SECRET') ? value.substring(0, 10) + '***' : value
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 初始化 Telegram Bot（從資料庫讀取設定後重啟）
+app.post('/api/telegram/init', async (req, res) => {
+  try {
+    const token = await dbOps.getSetting('TELEGRAM_BOT_TOKEN');
+    const webhookUrl = await dbOps.getSetting('TELEGRAM_WEBHOOK_URL') || 'https://medication-reminder-bot.zeabur.app';
+    
+    if (!token) {
+      return res.status(400).json({ 
+        error: 'TELEGRAM_BOT_TOKEN 未設定',
+        hint: '請先使用 POST /api/settings 存入 Token'
+      });
+    }
+    
+    // 創建新的 Bot 實例
+    const { createTelegramBot } = require('./telegramBot');
+    telegramBot = await createTelegramBot(app, dbOps);
+    
+    if (telegramBot) {
+      res.json({
+        success: true,
+        message: 'Telegram Bot 已初始化',
+        webhookUrl: `${webhookUrl}/telegram/webhook`
+      });
+    } else {
+      res.status(500).json({ error: 'Telegram Bot 初始化失敗' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 列出所有設定（不顯示敏感值）
+app.get('/api/settings', async (req, res) => {
+  try {
+    const keys = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_URL', 'LINE_CHANNEL_ACCESS_TOKEN'];
+    const settings = {};
+    
+    for (const key of keys) {
+      const value = await dbOps.getSetting(key);
+      if (value) {
+        settings[key] = {
+          exists: true,
+          value: key.includes('TOKEN') || key.includes('SECRET') ? value.substring(0, 10) + '***' : value
+        };
+      } else {
+        settings[key] = { exists: false };
+      }
+    }
+    
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 手動觸發提醒（開發/測試用）
