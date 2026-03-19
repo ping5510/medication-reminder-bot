@@ -69,7 +69,7 @@ async function main() {
   app.post('/telegram/webhook', (req, res) => {
     console.log('📥 收到 Telegram Webhook 請求');
     if (telegramBot && telegramBot.isInitialized()) {
-      telegramBot.processUpdate(req.body);
+      telegramBot.bot.processUpdate(req.body);
       res.send('OK');
     } else {
       res.status(500).send('Telegram Bot not initialized');
@@ -225,7 +225,7 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     database: 'connected',
     lineBot: bot ? 'connected' : 'not_configured',
-    telegramBot: telegramBot && telegramBot.isInitialized() ? 'connected' : 'not_configured'
+    telegramBot: telegramBot && typeof telegramBot.isInitialized === 'function' && telegramBot.isInitialized() ? 'connected' : 'not_configured'
   });
 });
 

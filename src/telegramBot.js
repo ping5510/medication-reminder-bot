@@ -99,10 +99,21 @@ async function createBot(expressAppInstance, database) {
       console.error('❌ Telegram Bot 連接測試失敗:', err.message);
     });
     
-    return bot;
+    // 返回包裝對象，包含 Bot 實例和輔助函數
+    return {
+      bot: bot,
+      processUpdate: (update) => bot.processUpdate(update),
+      sendMessage: (chatId, text, options) => bot.sendMessage(chatId, text, options),
+      isInitialized: () => bot !== null,
+      setWebhook: (url) => bot.setWebHook(url),
+      getMe: () => bot.getMe()
+    };
   } catch (error) {
     console.error('❌ Telegram Bot 初始化失敗:', error.message);
-    return null;
+    return {
+      bot: null,
+      isInitialized: () => false
+    };
   }
 }
 
