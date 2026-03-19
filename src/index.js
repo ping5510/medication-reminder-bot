@@ -51,12 +51,12 @@ async function main() {
     console.log('⚠️ 伺服器將以有限功能啟動（Webhook 接收模式）');
   }
 
-  // 初始化 Telegram Bot
+  // 初始化 Telegram Bot（使用 Webhook 模式）
   let telegramBot = null;
   try {
-    telegramBot = createTelegramBot();
+    telegramBot = createTelegramBot(app);  // 傳入 Express app
     if (telegramBot) {
-      console.log(`   Telegram Bot 實例: ${telegramBot ? '已創建' : 'null'}`);
+      console.log(`   Telegram Bot 實例: 已創建`);
       console.log(`   Telegram 是否就緒: ${telegramBot && telegramBot.isInitialized() ? '是' : '否'}`);
     } else {
       console.log('   ⚠️ createTelegramBot() 返回 null');
@@ -64,6 +64,17 @@ async function main() {
   } catch (error) {
     console.error('❌ Telegram Bot 初始化失敗:', error.message);
   }
+
+  // Telegram Webhook 端點
+  app.post('/telegram/webhook', (req, res) => {
+    console.log('📥 收到 Telegram Webhook 請求');
+    if (telegramBot && telegramBot.isInitialized()) {
+      telegramBot.processUpdate(req.body);
+      res.send('OK');
+    } else {
+      res.status(500).send('Telegram Bot not initialized');
+    }
+  });
 
   // 初始化排程器
   let scheduler;

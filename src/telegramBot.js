@@ -1,19 +1,23 @@
 /**
  * 吃藥提醒 Telegram Bot - Telegram API 模組
- * 負責處理 Telegram Bot API 的操作
+ * 使用 Webhook 模式（適合雲端平台）
  */
 
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
 
 // 令牌
 let token = null;
 let bot = null;
+let expressApp = null;
 
 /**
- * 建立 Telegram Bot 實例
+ * 建立 Telegram Bot 實例（Webhook 模式）
+ * @param {object} app - Express app 實例
  */
-function createBot() {
+function createBot(expressAppInstance) {
   token = process.env.TELEGRAM_BOT_TOKEN;
+  expressApp = expressAppInstance;
   
   if (!token) {
     console.log('⚠️ TELEGRAM_BOT_TOKEN 未設定');
@@ -23,25 +27,29 @@ function createBot() {
   console.log(`📱 Telegram Token 已設定: ${token.substring(0, 10)}...`);
   
   try {
-    // 使用 polling 模式（適用於長期運行的服務）
+    // 使用 webhook 模式
     bot = new TelegramBot(token, {
-      polling: {
-        interval: 300,
-        autoStart: true,
-        params: {
-          timeout: 10
-        }
-      }
+      polling: false  // 關閉 polling
     });
     
-    console.log('✅ Telegram Bot 初始化成功');
+    // 設置 webhook
+    const webhookPath = '/telegram/webhook';
+    const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || 'https://medication-reminder-bot.zeabur.app';
     
-    // 設定錯誤處理
-    bot.on('polling_error', (error) => {
-      console.error('❌ Telegram Polling Error:', error.message);
-    });
+    console.log(`📱 設置 Telegram Webhook: ${webhookUrl}${webhookPath}`);
     
-    // 測試 Bot 是否真的在運行
+    bot.setWebHook(`${webhookUrl}${webhookPath}`)
+      .then(() => {
+        console.log('✅ Telegram Webhook 設置成功');
+      })
+      .catch((err) => {
+        console.error('❌ Telegram Webhook 設置失敗:', err.message);
+        // 回退到 polling
+        console.log('⚠️ 回退到 Polling 模式...');
+        enablePolling();
+      });
+    
+    // 測試 Bot 是否在線
     bot.getMe().then((info) => {
       console.log(`✅ Telegram Bot 已在線: @${info.username}`);
     }).catch((err) => {
@@ -52,6 +60,19 @@ function createBot() {
   } catch (error) {
     console.error('❌ Telegram Bot 初始化失敗:', error.message);
     return null;
+  }
+}
+
+/**
+ * 啟用 Polling 模式（備用）
+ */
+function enablePolling() {
+  if (bot) {
+    bot.startPolling({
+      interval: 1000,
+      timeout: 0
+    });
+    console.log('✅ Telegram Polling 模式已啟用');
   }
 }
 
