@@ -1,6 +1,8 @@
 /**
  * 吃藥提醒 Telegram Bot - Telegram API 模組
  * 使用 Webhook 模式（適合雲端平台）
+ * 
+ * Token 優先從資料庫讀取，其次從環境變數
  */
 
 const TelegramBot = require('node-telegram-bot-api');
@@ -10,21 +12,58 @@ const express = require('express');
 let token = null;
 let bot = null;
 let expressApp = null;
+let db = null;
+
+/**
+ * 設置資料庫實例
+ */
+function setDatabase(database) {
+  db = database;
+}
+
+/**
+ * 從資料庫獲取設定
+ */
+async function getSetting(key, defaultValue = null) {
+  if (db && db.getSetting) {
+    const value = await db.getSetting(key);
+    return value || defaultValue;
+  }
+  return defaultValue;
+}
+
+/**
+ * 保存設定到資料庫
+ */
+async function saveSetting(key, value) {
+  if (db && db.setSetting) {
+    await db.setSetting(key, value);
+  }
+}
 
 /**
  * 建立 Telegram Bot 實例（Webhook 模式）
- * @param {object} app - Express app 實例
+ * @param {object} expressAppInstance - Express app 實例
+ * @param {object} database - 資料庫實例
  */
-function createBot(expressAppInstance) {
-  token = process.env.TELEGRAM_BOT_TOKEN;
+async function createBot(expressAppInstance, database) {
   expressApp = expressAppInstance;
+  db = database;
+  
+  // 優先從資料庫讀取 Token
+  token = await getSetting('TELEGRAM_BOT_TOKEN');
+  
+  // 如果資料庫沒有，從環境變數讀取（備用）
+  if (!token) {
+    token = process.env.TELEGRAM_BOT_TOKEN;
+  }
   
   if (!token) {
-    console.log('⚠️ TELEGRAM_BOT_TOKEN 未設定');
+    console.log('⚠️ TELEGRAM_BOT_TOKEN 未設定（資料庫和環境變數都沒有）');
     return null;
   }
   
-  console.log(`📱 Telegram Token 已設定: ${token.substring(0, 10)}...`);
+  console.log(`📱 Telegram Token 已設定（來源：${await getSetting('TELEGRAM_BOT_TOKEN') ? '資料庫' : '環境變數'}）: ${token.substring(0, 10)}...`);
   
   try {
     // 使用 webhook 模式
@@ -34,7 +73,11 @@ function createBot(expressAppInstance) {
     
     // 設置 webhook
     const webhookPath = '/telegram/webhook';
-    const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || 'https://medication-reminder-bot.zeabur.app';
+    // 優先從資料庫讀取 Webhook URL
+    let webhookUrl = await getSetting('TELEGRAM_WEBHOOK_URL');
+    if (!webhookUrl) {
+      webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || 'https://medication-reminder-bot.zeabur.app';
+    }
     
     console.log(`📱 設置 Telegram Webhook: ${webhookUrl}${webhookPath}`);
     

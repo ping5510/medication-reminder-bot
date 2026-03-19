@@ -51,10 +51,10 @@ async function main() {
     console.log('⚠️ 伺服器將以有限功能啟動（Webhook 接收模式）');
   }
 
-  // 初始化 Telegram Bot（使用 Webhook 模式）
+  // 初始化 Telegram Bot（使用 Webhook 模式，優先從資料庫讀取設定）
   let telegramBot = null;
   try {
-    telegramBot = createTelegramBot(app);  // 傳入 Express app
+    telegramBot = await createTelegramBot(app, dbOps);  // 傳入 Express app 和資料庫
     if (telegramBot) {
       console.log(`   Telegram Bot 實例: 已創建`);
       console.log(`   Telegram 是否就緒: ${telegramBot && telegramBot.isInitialized() ? '是' : '否'}`);
