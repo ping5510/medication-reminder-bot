@@ -18,6 +18,7 @@ const DATA_FILE = path.join(DATA_DIR, 'medication.json');
 let users = [];
 let schedules = [];
 let medicationLogs = [];
+let systemSettings = {};
 
 // 确保数据目录存在
 function ensureDataDir() {
@@ -194,6 +195,15 @@ async function createTables() {
   } catch (e) {
     // 忽略列已存在的錯誤
   }
+  
+  // 創建系統設定表（用於存放 Bot Token 等配置）
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 }
 
 /**
@@ -296,6 +306,32 @@ function getDb() {
           saveToFile();
         }
         return user;
+      }
+    },
+    
+    // 系統設定操作
+    getSetting: async (key, defaultValue = null) => {
+      if (pool) {
+        const result = await pool.query('SELECT value FROM system_settings WHERE key = $1', [key]);
+        if (result.rows[0]) {
+          return result.rows[0].value;
+        }
+        return defaultValue;
+      } else {
+        const setting = systemSettings[key];
+        return setting !== undefined ? setting : defaultValue;
+      }
+    },
+    
+    setSetting: async (key, value) => {
+      if (pool) {
+        await pool.query(
+          'INSERT INTO system_settings (key, value, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()',
+          [key, value]
+        );
+      } else {
+        systemSettings[key] = value;
+        saveToFile();
       }
     },
     
