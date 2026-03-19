@@ -138,8 +138,8 @@ async function createTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY,
-      line_user_id VARCHAR(255) UNIQUE,
-      telegram_user_id VARCHAR(255) UNIQUE,
+      line_user_id VARCHAR(255),
+      telegram_user_id VARCHAR(255),
       name VARCHAR(255),
       created_at TIMESTAMP DEFAULT NOW()
     )
@@ -150,6 +150,13 @@ async function createTables() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_user_id VARCHAR(255)`);
   } catch (e) {
     // 忽略列已存在的錯誤
+  }
+  
+  // 修改 line_user_id 允許 NULL（對於純 Telegram 用戶）
+  try {
+    await pool.query(`ALTER TABLE users ALTER COLUMN line_user_id DROP NOT NULL`);
+  } catch (e) {
+    // 忽略錯誤
   }
   
   await pool.query(`
