@@ -55,6 +55,12 @@ async function main() {
   let telegramBot = null;
   try {
     telegramBot = createTelegramBot();
+    if (telegramBot) {
+      console.log(`   Telegram Bot 實例: ${telegramBot ? '已創建' : 'null'}`);
+      console.log(`   Telegram 是否就緒: ${telegramBot && telegramBot.isInitialized() ? '是' : '否'}`);
+    } else {
+      console.log('   ⚠️ createTelegramBot() 返回 null');
+    }
   } catch (error) {
     console.error('❌ Telegram Bot 初始化失敗:', error.message);
   }
@@ -67,7 +73,10 @@ async function main() {
   }
 
   // 設置 Telegram 回調查詢處理
+  console.log(`   檢查 Telegram Bot 狀態: telegramBot=${!!telegramBot}, isInitialized=${telegramBot ? telegramBot.isInitialized() : 'N/A'}`);
+  
   if (telegramBot && telegramBot.isInitialized()) {
+    console.log('   ✅ 開始設置 Telegram 處理器...');
     const { setCallbackHandler, setMessageHandler } = require('./telegramBot');
     const { getScheduleById, getMedicationLogByScheduleAndDate, updateMedicationLogStatus, createOrGetTelegramUser, setupDefaultSchedules, sendTextMessage } = dbOps;
     const { sendTextMessage: sendTelegramText } = require('./telegramBot');

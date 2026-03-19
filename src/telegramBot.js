@@ -20,6 +20,8 @@ function createBot() {
     return null;
   }
   
+  console.log(`📱 Telegram Token 已設定: ${token.substring(0, 10)}...`);
+  
   try {
     // 使用 polling 模式（適用於長期運行的服務）
     bot = new TelegramBot(token, {
@@ -37,6 +39,13 @@ function createBot() {
     // 設定錯誤處理
     bot.on('polling_error', (error) => {
       console.error('❌ Telegram Polling Error:', error.message);
+    });
+    
+    // 測試 Bot 是否真的在運行
+    bot.getMe().then((info) => {
+      console.log(`✅ Telegram Bot 已在線: @${info.username}`);
+    }).catch((err) => {
+      console.error('❌ Telegram Bot 連接測試失敗:', err.message);
     });
     
     return bot;
@@ -164,15 +173,19 @@ function setMessageHandler(callback) {
     return;
   }
   
+  // 處理所有訊息（回調和普通訊息分開處理）
   bot.on('message', (msg) => {
+    // 忽略編輯過的訊息
+    if (msg.edited_message) return;
+    
+    // 忽略回調按鈕的更新訊息
+    if (msg.callback_query) return;
+    
     const chatId = msg.chat.id;
     const text = msg.text;
     
-    // 忽略回調查詢
-    if (msg.callback_query) return;
-    
-    // 忽略按鈕點擊（它們由 callback_query 處理）
-    if (text === undefined) return;
+    // 忽略非文字訊息
+    if (!text) return;
     
     console.log(`📥 收到 Telegram 訊息: ${text} (from ${chatId})`);
     
