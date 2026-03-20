@@ -112,14 +112,12 @@ function createScheduler(lineBot, telegramBot, db) {
     
     // 定義前一餐
     let previousMealType = null;
-    let requiredInterval = 0;
+    let requiredInterval = 120; // 預設 2 小時
     
     if (mealType === '午餐後') {
       previousMealType = '早餐後（中藥）';
-      requiredInterval = 60; // 早餐中藥後 1 小時就可以
     } else if (mealType === '晚餐後') {
       previousMealType = '午餐後';
-      requiredInterval = 120; // 午餐中藥後 2 小時
     }
     
     // 如果沒有前一餐要求，直接通過
