@@ -206,28 +206,60 @@ function createScheduler(lineBot, telegramBot, db) {
   /**
    * 發送中藥備用提醒（用戶都沒回覆時使用）
    * 檢查是否需要跳過（如果用戶已經點擊吃過西藥）
+   * 
+   * 邏輯：
+   * - 早餐中藥（09:30）：檢查西藥是否已服用
+   *   - 如果西藥已服用且中藥提醒已觸發 → 跳過
+   *   - 如果西藥未服用 → 發送中藥提醒
+   * - 午餐/晚餐中藥：固定時間發送，不需要檢查西藥
    */
-  const sendChineseMedicineReminderBackup = async () => {
+  const sendChineseMedicineReminderBackup = async (mealType) => {
     const users = await getAllUsers();
     const today = getTaiwanDateString();
     
+    // 準備發送函數
+    const { sendReminderMessage: sendLineReminder } = require('./lineBot');
+    const { sendReminderMessage: sendTelegramReminder } = require('./telegramBot');
+    
     for (const user of users) {
       const schedules = await getSchedulesByUserId(user.id);
-      const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
       
-      if (!westernSchedule) continue;
-      
-      const westernLog = await getMedicationLogByScheduleAndDate(westernSchedule.id, today);
-      
-      // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
-      if (westernLog && westernLog.chinese_medicine_triggered) {
-        console.log(`⏭️ 跳過 ${user.line_user_id} 早餐中藥（已由用戶回覆觸發）`);
-        continue;
+      // 早餐中藥需要檢查西藥
+      if (mealType === '早餐後（中藥）') {
+        const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
+        
+        if (!westernSchedule) continue;
+        
+        const westernLog = await getMedicationLogByScheduleAndDate(westernSchedule.id, today);
+        
+        // 如果西藥已服用，檢查中藥提醒是否已觸發
+        if (westernLog && westernLog.status === 'TAKEN') {
+          // 檢查中藥提醒是否已觸發（通過 timestamp 判斷）
+          const chineseSchedule = schedules.find(s => s.meal_type === '早餐後（中藥）');
+          if (chineseSchedule) {
+            const chineseLog = await getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
+            // 如果中藥已經有記錄且在西藥服用之後，說明已經觸發過
+            if (chineseLog && chineseLog.created_at && westernLog.taken_at) {
+              const chineseCreated = new Date(chineseLog.created_at);
+              const westernTaken = new Date(westernLog.taken_at);
+              if (chineseCreated > westernTaken) {
+                console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（中藥提醒已由西藥服用觸發）`);
+                continue;
+              }
+            }
+          }
+        }
+        
+        // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
+        if (westernLog && westernLog.chinese_medicine_triggered) {
+          console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（已由用戶回覆觸發）`);
+          continue;
+        }
       }
       
       // 發送中藥提醒
-      console.log(`📤 備用發送 ${user.line_user_id} 早餐中藥提醒`);
-      await sendReminderForMealType('早餐後（中藥）');
+      console.log(`📤 發送 ${mealType} 提醒`);
+      await sendReminderForMealType(mealType);
     }
   };
   
@@ -256,14 +288,15 @@ function createScheduler(lineBot, telegramBot, db) {
       sendReminderForMealType('早餐後（西藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 早餐（中藥）備用===================
-    // 09:30 - 備用提醒（如果用戶沒回應）
+    // 注意：早餐中藥由以下方式觸發
+    // 1. 西藥被服用後 1 小時自動發送（通過 setTimeout）
+    // 2. 09:30 備用提醒（如果西藥還沒服用）
     cron.schedule('30 9 * * *', () => {
-      sendChineseMedicineReminderBackup().catch(err => console.error('❌ 錯誤:', err));
+      sendChineseMedicineReminderBackup('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 午餐（中藥）===================
-    // 13:00 - 備用提醒（固定時間）
+    // ==================== 午餐（中藥）==================
+    // 13:00 - 午餐中藥提醒（固定時間）
     cron.schedule('0 13 * * *', () => {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
@@ -278,8 +311,8 @@ function createScheduler(lineBot, telegramBot, db) {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 晚餐（中藥）===================
-    // 19:00 - 備用提醒（固定時間）
+    // ==================== 晚餐（中藥）==================
+    // 19:00 - 晚餐中藥提醒（固定時間）
     cron.schedule('0 19 * * *', () => {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
     });
@@ -298,7 +331,7 @@ function createScheduler(lineBot, telegramBot, db) {
     console.log('📅 排程任務：');
     console.log('   • 00:00 - 初始化當日排程');
     console.log('   • 08:00-09:00 早餐（西藥）提醒 × 3');
-    console.log('   • 09:30 早餐（中藥）備用提醒');
+    console.log('   • 09:30 早餐（中藥）備用提醒（西藥未服用時）');
     console.log('   • 13:00-14:00 午餐（中藥）提醒 × 3');
     console.log('   • 19:00-20:00 晚餐（中藥）提醒 × 3');
     console.log('📱 通知通道：');

@@ -248,7 +248,8 @@ async function handleWebhookEvent(bot, event, db) {
           });
           
           // 發送中藥提醒（1小時後開始，每30分鐘一次）
-          scheduleChineseMedicineReminder(bot, user, db, 1);  // 1小時後
+          // 延遲 1 小時後開始
+          scheduleChineseMedicineReminder(bot, null, user, db, 1, 0);
           
           await sendTextMessage(bot, userId, '💡 提醒：1 小時後會發送中藥提醒，記得服用哦！');
         } else {
@@ -458,17 +459,22 @@ async function setupDefaultSchedules(userId) {
 
 /**
  * 發送中藥提醒（遞歸函數，實現多次提醒）
- * @param {object} bot - LINE Bot 實例
+ * 支持 LINE 和 Telegram 雙通道
+ * 
+ * @param {object} lineBot - LINE Bot 實例
+ * @param {object} telegramBot - Telegram Bot 實例
  * @param {object} user - 用戶對象
  * @param {object} db - 數據庫操作對象
  * @param {number} delayHours - 延時（小時）
  * @param {number} reminderCount - 已發送次數
  */
-function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminderCount = 0) {
+function scheduleChineseMedicineReminder(lineBot, telegramBot, user, db, delayHours = 1, reminderCount = 0) {
   const { getSchedulesByUserId, getMedicationLogByScheduleAndDate, updateMedicationLogStatus } = db;
   
   // 計算延時毫秒數
   const delayMs = delayHours * 60 * 60 * 1000;
+  
+  console.log(`⏰ 設置中藥提醒，${delayHours}小時後發送 (次數: ${reminderCount})`);
   
   setTimeout(async () => {
     const today = new Date().toISOString().split('T')[0];
@@ -488,19 +494,45 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
       return;
     }
     
-    // 從模組內部獲取 sendReminderMessage 函數
-    const { sendReminderMessage: sendReminder } = require('./lineBot');
+    // 準備排程信息
+    let medicines = chineseSchedule.medicines;
+    if (typeof medicines === 'string') {
+      try {
+        medicines = JSON.parse(medicines);
+      } catch (e) {
+        medicines = [medicines];
+      }
+    }
     
-    // 發送中藥提醒
     const scheduleInfo = {
       mealType: chineseSchedule.meal_type,
-      medicines: JSON.parse(chineseSchedule.medicines),
+      medicines: medicines,
       scheduleId: chineseSchedule.id,
       retryCount: reminderCount,
       isSecondDose: chineseSchedule.is_second_dose
     };
     
-    await sendReminder(bot, user.line_user_id, scheduleInfo);
+    // 發送 LINE 提醒
+    if (lineBot && user.line_user_id) {
+      const { sendReminderMessage: sendLineReminder } = require('./lineBot');
+      try {
+        await sendLineReminder(lineBot, user.line_user_id, scheduleInfo);
+        console.log(`✅ LINE 中藥提醒已發送給 ${user.line_user_id}`);
+      } catch (error) {
+        console.error(`❌ LINE 中藥提醒失敗:`, error.message);
+      }
+    }
+    
+    // 發送 Telegram 提醒
+    if (telegramBot && telegramBot.isInitialized() && user.telegram_user_id) {
+      const { sendReminderMessage: sendTelegramReminder } = require('./telegramBot');
+      try {
+        await sendTelegramReminder(user.telegram_user_id, scheduleInfo);
+        console.log(`✅ Telegram 中藥提醒已發送給 ${user.telegram_user_id}`);
+      } catch (error) {
+        console.error(`❌ Telegram 中藥提醒失敗:`, error.message);
+      }
+    }
     
     // 更新狀態
     if (log) {
@@ -510,13 +542,22 @@ function scheduleChineseMedicineReminder(bot, user, db, delayHours = 1, reminder
       });
     }
     
-    console.log(`✅ 中藥提醒已發送給 ${user.line_user_id} (${reminderCount + 1}/3)`);
+    console.log(`✅ 中藥提醒已發送 (${reminderCount + 1}/3)`);
     
     // 如果還沒超過3次，繼續設置下一次提醒（30分鐘後）
     if (reminderCount < 2) {
-      scheduleChineseMedicineReminder(bot, user, db, 0.5, reminderCount + 1);  // 30分鐘 = 0.5小時
+      scheduleChineseMedicineReminder(lineBot, telegramBot, user, db, 0.5, reminderCount + 1);  // 30分鐘 = 0.5小時
     }
   }, delayMs);
+}
+
+/**
+ * 觸發中藥提醒的便捷函數
+ * 由 index.js 調用，傳入 LINE Bot 和 Telegram Bot 實例
+ */
+function triggerChineseMedicineReminder(lineBot, telegramBot, user, db) {
+  // 延遲 1 小時後開始發送中藥提醒
+  scheduleChineseMedicineReminder(lineBot, telegramBot, user, db, 1, 0);
 }
 
 module.exports = {
@@ -526,5 +567,7 @@ module.exports = {
   handlePostback,
   handleWebhookEvent,
   setupDefaultSchedules,
+  triggerChineseMedicineReminder,
+  scheduleChineseMedicineReminder,
   MEDICATIONS
 };

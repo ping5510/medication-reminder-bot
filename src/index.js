@@ -116,7 +116,9 @@ async function main() {
         
         // 檢查是否為早餐西藥，啟動中藥提醒
         if (schedule && schedule.meal_type === '早餐後（西藥）') {
-          // 這裡可以添加中藥提醒邏輯
+          // 觸發中藥提醒（1小時後）
+          const { triggerChineseMedicineReminder } = require('./lineBot');
+          triggerChineseMedicineReminder(bot, telegramBot, user, dbOps);
           await sendTelegramText(chatId, '💡 提醒：1 小時後會發送中藥提醒，記得服用哦！');
         }
       } else if (action === 'snooze') {
