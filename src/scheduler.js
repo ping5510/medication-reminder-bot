@@ -100,6 +100,74 @@ function createScheduler(lineBot, telegramBot, db) {
   };
   
   /**
+   * 檢查與上一餐中藥的間隔
+   * @param {string} mealType - 當前餐次
+   * @param {object} schedules - 用戶排程
+   * @param {string} today - 今天日期
+   * @returns {object} - { canSend: boolean, reason: string, previousTakenAt: Date }
+   */
+  const checkMealInterval = async (mealType, schedules, today) => {
+    // 定義間隔要求（分鐘）
+    const INTERVAL_MINUTES = 120; // 2 小時
+    
+    // 定義前一餐
+    let previousMealType = null;
+    let requiredInterval = 0;
+    
+    if (mealType === '午餐後') {
+      previousMealType = '早餐後（中藥）';
+      requiredInterval = 60; // 早餐中藥後 1 小時就可以
+    } else if (mealType === '晚餐後') {
+      previousMealType = '午餐後';
+      requiredInterval = 120; // 午餐中藥後 2 小時
+    }
+    
+    // 如果沒有前一餐要求，直接通過
+    if (!previousMealType) {
+      return { canSend: true, reason: '無間隔要求', previousTakenAt: null };
+    }
+    
+    // 查找前一餐的排程和記錄
+    const previousSchedule = schedules.find(s => s.meal_type === previousMealType);
+    if (!previousSchedule) {
+      console.log(`   ⚠️ 找不到前一餐排程: ${previousMealType}`);
+      return { canSend: true, reason: '找不到前一餐排程', previousTakenAt: null };
+    }
+    
+    const previousLog = await getMedicationLogByScheduleAndDate(previousSchedule.id, today);
+    
+    // 如果前一餐還沒服用，檢查是否為固定時間提醒
+    if (!previousLog || previousLog.status !== 'TAKEN') {
+      // 前一餐尚未服用
+      if (mealType === '午餐後') {
+        // 午餐是固定時間，不等待前一餐
+        return { canSend: true, reason: '固定時間發送', previousTakenAt: null };
+      } else {
+        // 晚餐需要等待午餐
+        return { canSend: false, reason: `等待 ${previousMealType} 服用`, previousTakenAt: null };
+      }
+    }
+    
+    // 計算間隔
+    const previousTakenAt = new Date(previousLog.taken_at);
+    const now = new Date();
+    const intervalMinutes = (now - previousTakenAt) / (1000 * 60);
+    
+    console.log(`   📊 間隔檢查: ${previousMealType} 在 ${previousTakenAt.toLocaleTimeString('zh-TW')}`);
+    console.log(`   📊 距離: ${intervalMinutes.toFixed(1)} 分鐘 (要求: ${requiredInterval} 分鐘)`);
+    
+    if (intervalMinutes < requiredInterval) {
+      return { 
+        canSend: false, 
+        reason: `${previousMealType} 間隔不足 ${requiredInterval} 分鐘（已過 ${intervalMinutes.toFixed(1)} 分鐘）`, 
+        previousTakenAt 
+      };
+    }
+    
+    return { canSend: true, reason: '間隔足夠', previousTakenAt };
+  };
+  
+  /**
    * 發送用藥提醒（通用函數）- 支持多通道
    * @param {string} mealType - 用藥類型（如「早餐後（西藥）」）
    * @param {string} channel - 通道类型：'line', 'telegram', 'both'
@@ -145,6 +213,14 @@ function createScheduler(lineBot, telegramBot, db) {
         console.log(`⏭️ 跳過 ${mealType}（已標記為未服用）`);
         continue;
       }
+      
+      // 檢查與上一餐的間隔
+      const intervalCheck = await checkMealInterval(mealType, schedules, today);
+      if (!intervalCheck.canSend) {
+        console.log(`⏭️ 跳過 ${mealType}（${intervalCheck.reason}）`);
+        continue;
+      }
+      console.log(`   ✅ ${intervalCheck.reason}，可以發送`);
       
       // 檢查重試次數
       const retryCount = log.retry_count || 0;
