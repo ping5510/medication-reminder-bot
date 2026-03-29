@@ -109,15 +109,22 @@ function createScheduler(lineBot, telegramBot, db) {
   const checkMealInterval = async (mealType, schedules, today) => {
     // 定義間隔要求（分鐘）
     const INTERVAL_MINUTES = 120; // 2 小時
+    const SKIP_WAIT_THRESHOLD = 30; // 超過30分鐘不再等待前一餐
     
-    // 定義前一餐
+    // 定義前一餐和提醒時間
     let previousMealType = null;
-    let requiredInterval = 120; // 預設 2 小時
+    let previousMealReminderTime = null;
     
     if (mealType === '午餐後') {
       previousMealType = '早餐後（中藥）';
+      // 早餐中藥提醒時間 09:30
+      previousMealReminderTime = new Date();
+      previousMealReminderTime.setHours(9, 30, 0, 0);
     } else if (mealType === '晚餐後') {
       previousMealType = '午餐後';
+      // 午餐提醒時間 13:00
+      previousMealReminderTime = new Date();
+      previousMealReminderTime.setHours(13, 0, 0, 0);
     }
     
     // 如果沒有前一餐要求，直接通過
@@ -133,15 +140,28 @@ function createScheduler(lineBot, telegramBot, db) {
     }
     
     const previousLog = await getMedicationLogByScheduleAndDate(previousSchedule.id, today);
+    const now = new Date();
     
     // 如果前一餐還沒服用，檢查是否為固定時間提醒
     if (!previousLog || previousLog.status !== 'TAKEN') {
-      // 前一餐尚未服用
+      // 前一餐尚未服用，計算距離提醒過了多久
+      if (previousMealReminderTime) {
+        const minutesSinceReminder = (now - previousMealReminderTime) / (1000 * 60);
+        console.log(`   ⏰ 前一餐提醒時間: ${previousMealReminderTime.toLocaleTimeString('zh-TW')}`);
+        console.log(`   ⏰ 距離提醒已過: ${minutesSinceReminder.toFixed(0)} 分鐘`);
+        
+        // 如果前一餐提醒已過超過門檻，不再等待
+        if (minutesSinceReminder > SKIP_WAIT_THRESHOLD) {
+          console.log(`   ✅ 前一餐提醒已過超過 ${SKIP_WAIT_THRESHOLD} 分鐘，不再等待`);
+          return { canSend: true, reason: `前一餐提醒已過 ${minutesSinceReminder.toFixed(0)} 分鐘，不再等待`, previousTakenAt: null };
+        }
+      }
+      
+      // 午餐是固定時間，不等待前一餐
       if (mealType === '午餐後') {
-        // 午餐是固定時間，不等待前一餐
         return { canSend: true, reason: '固定時間發送', previousTakenAt: null };
       } else {
-        // 晚餐需要等待午餐
+        // 晚餐還在等待期內
         return { canSend: false, reason: `等待 ${previousMealType} 服用`, previousTakenAt: null };
       }
     }
