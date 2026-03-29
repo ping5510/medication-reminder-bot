@@ -117,14 +117,14 @@ function createScheduler(lineBot, telegramBot, db) {
     
     if (mealType === '午餐後') {
       previousMealType = '早餐後（中藥）';
-      // 早餐中藥提醒時間 09:30
+      // 早餐中藥第3次提醒時間 09:30 + 30分鐘緩沖 = 10:00
       previousMealReminderTime = new Date();
-      previousMealReminderTime.setHours(9, 30, 0, 0);
+      previousMealReminderTime.setHours(10, 0, 0, 0);
     } else if (mealType === '晚餐後') {
       previousMealType = '午餐後';
-      // 午餐提醒時間 13:00
+      // 午餐第3次提醒時間 14:00，過30分鐘後 = 14:30
       previousMealReminderTime = new Date();
-      previousMealReminderTime.setHours(13, 0, 0, 0);
+      previousMealReminderTime.setHours(14, 30, 0, 0);
     }
     
     // 如果沒有前一餐要求，直接通過
