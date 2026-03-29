@@ -168,7 +168,6 @@ function createScheduler(lineBot, telegramBot, db) {
     
     // 計算間隔
     const previousTakenAt = new Date(previousLog.taken_at);
-    const now = new Date();
     const intervalMinutes = (now - previousTakenAt) / (1000 * 60);
     
     console.log(`   📊 間隔檢查: ${previousMealType} 在 ${previousTakenAt.toLocaleTimeString('zh-TW')}`);
