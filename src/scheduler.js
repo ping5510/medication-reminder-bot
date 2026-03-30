@@ -327,26 +327,16 @@ function createScheduler(lineBot, telegramBot, db) {
         
         // 如果西藥已服用，檢查中藥提醒是否已觸發
         if (westernLog && westernLog.status === 'TAKEN') {
-          // 檢查中藥提醒是否已觸發（通過 timestamp 判斷）
+          // 檢查中藥提醒是否已觸發
           const chineseSchedule = schedules.find(s => s.meal_type === '早餐後（中藥）');
           if (chineseSchedule) {
             const chineseLog = await getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
-            // 如果中藥已經有記錄且在西藥服用之後，說明已經觸發過
-            if (chineseLog && chineseLog.created_at && westernLog.taken_at) {
-              const chineseCreated = new Date(chineseLog.created_at);
-              const westernTaken = new Date(westernLog.taken_at);
-              if (chineseCreated > westernTaken) {
-                console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（中藥提醒已由西藥服用觸發）`);
-                continue;
-              }
+            // 如果中藥狀態是 SNOOZED 或 lastRemindedAt 有值，說明 setTimeout 已觸發過
+            if (chineseLog && (chineseLog.status === 'SNOOZED' || chineseLog.last_reminded_at)) {
+              console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（中藥提醒已由 setTimeout 觸發）`);
+              continue;
             }
           }
-        }
-        
-        // 如果西藥的中藥提醒已經觸發過（用戶點擊吃過），則跳過
-        if (westernLog && westernLog.chinese_medicine_triggered) {
-          console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（已由用戶回覆觸發）`);
-          continue;
         }
       }
       
