@@ -1,4 +1,4 @@
-/**
+﻿/**
 /**
  * 吃藥提醒 LINE Bot - 排程器模組
  * 負責處理定時提醒任務
@@ -346,12 +346,6 @@ function createScheduler(lineBot, telegramBot, db) {
       
       // 只有在西藥還沒服用的情況下，才通過固定時間的 cron 發送中藥提醒
       console.log(`📤 西藥未服用，發送 ${mealType} 固定時間提醒`);
-      await sendReminderForMealType(mealType);
-    }
-  };
-      
-      // 發送中藥提醒
-      console.log(`📤 發送 ${mealType} 提醒`);
       await sendReminderForMealType(mealType);
     }
   };
