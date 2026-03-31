@@ -116,6 +116,9 @@ async function main() {
         
         // 檢查是否為早餐西藥，啟動中藥提醒
         if (schedule && schedule.meal_type === '早餐後（西藥）') {
+          // 獲取用戶信息
+          const { createOrGetTelegramUser } = dbOps;
+          const user = await createOrGetTelegramUser(chatId.toString(), 'Telegram User');
           // 觸發中藥提醒（1小時後）
           const { triggerChineseMedicineReminder } = require('./lineBot');
           triggerChineseMedicineReminder(bot, telegramBot, user, dbOps);

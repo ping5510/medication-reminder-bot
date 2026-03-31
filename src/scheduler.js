@@ -171,12 +171,12 @@ function createScheduler(lineBot, telegramBot, db) {
     const intervalMinutes = (now - previousTakenAt) / (1000 * 60);
     
     console.log(`   📊 間隔檢查: ${previousMealType} 在 ${previousTakenAt.toLocaleTimeString('zh-TW')}`);
-    console.log(`   📊 距離: ${intervalMinutes.toFixed(1)} 分鐘 (要求: ${requiredInterval} 分鐘)`);
+    console.log(`   📊 距離: ${intervalMinutes.toFixed(1)} 分鐘 (要求: ${INTERVAL_MINUTES} 分鐘)`);
     
-    if (intervalMinutes < requiredInterval) {
+    if (intervalMinutes < INTERVAL_MINUTES) {
       return { 
         canSend: false, 
-        reason: `${previousMealType} 間隔不足 ${requiredInterval} 分鐘（已過 ${intervalMinutes.toFixed(1)} 分鐘）`, 
+        reason: `${previousMealType} 間隔不足 ${INTERVAL_MINUTES} 分鐘（已過 ${intervalMinutes.toFixed(1)} 分鐘）`, 
         previousTakenAt 
       };
     }
