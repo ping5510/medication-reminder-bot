@@ -1,4 +1,4 @@
-﻿/**
+/**
 /**
  * 吃藥提醒 LINE Bot - 排程器模組
  * 負責處理定時提醒任務
@@ -107,6 +107,7 @@ function createScheduler(lineBot, telegramBot, db) {
    * @returns {object} - { canSend: boolean, reason: string, previousTakenAt: Date }
    */
   const checkMealInterval = async (mealType, schedules, today) => {
+
     // 定義間隔要求（分鐘）
     const INTERVAL_MINUTES = 120; // 2 小時
     const SKIP_WAIT_THRESHOLD = 30; // 超過30分鐘不再等待前一餐
@@ -117,7 +118,7 @@ function createScheduler(lineBot, telegramBot, db) {
     
     if (mealType === '午餐後') {
       previousMealType = '早餐後（中藥）';
-      // 早餐中藥第3次提醒時間 09:30 + 30分鐘緩沖 = 10:00
+      // 早餐中藥第3次提醒時間 09:30 + 30分鐘緩冲 = 10:00
       previousMealReminderTime = new Date();
       previousMealReminderTime.setHours(10, 0, 0, 0);
     } else if (mealType === '晚餐後') {
@@ -190,6 +191,7 @@ function createScheduler(lineBot, telegramBot, db) {
    * @param {string} channel - 通道类型：'line', 'telegram', 'both'
    */
   const sendReminderForMealType = async (mealType, channel = 'both') => {
+
     const users = await getAllUsers();
     const today = getTaiwanDateString();
     
@@ -335,9 +337,22 @@ function createScheduler(lineBot, telegramBot, db) {
       const westernSchedule = schedules.find(s => s.meal_type === '早餐後（西藥）');
       if (!westernSchedule) continue;
       
+      // 檢查早餐中藥是否已被 setTimeout 發送過
+      const chineseSchedule = schedules.find(s => s.meal_type === mealType);
+      if (!chineseSchedule) continue;
+      
+      const chineseLog = await getMedicationLogByScheduleAndDate(chineseSchedule.id, today);
+      
+      // 關鍵：如果 chineseLog.last_reminded_at 已有值，
+      // 說明 setTimeout 已經發送過提醒（或已設定將要發送），跳過
+      if (chineseLog && chineseLog.last_reminded_at) {
+        console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（setTimeout 已發送過）`);
+        continue;
+      }
+      
       const westernLog = await getMedicationLogByScheduleAndDate(westernSchedule.id, today);
       
-      // 關鍵：如果西藥已經服用，說明 setTimeout 會在合適的時間發送中藥提醒
+      // 如果西藥已經服用，說明 setTimeout 會在合適的時間發送中藥提醒
       // 我們不應該在這裡再次發送，直接跳過
       if (westernLog && westernLog.status === 'TAKEN') {
         console.log(`⏭️ 跳過 ${user.line_user_id || user.telegram_user_id} 早餐中藥（西藥已服用，setTimeout 將自動觸發）`);
@@ -382,7 +397,7 @@ function createScheduler(lineBot, telegramBot, db) {
       sendChineseMedicineReminderBackup('早餐後（中藥）').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 午餐（中藥）==================
+    // ==================== 午餐（中藥）===================
     // 13:00 - 午餐中藥提醒（固定時間）
     cron.schedule('0 13 * * *', () => {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
@@ -398,7 +413,7 @@ function createScheduler(lineBot, telegramBot, db) {
       sendReminderForMealType('午餐後').catch(err => console.error('❌ 錯誤:', err));
     });
     
-    // ==================== 晚餐（中藥）==================
+    // ==================== 晚餐（中藥）===================
     // 19:00 - 晚餐中藥提醒（固定時間）
     cron.schedule('0 19 * * *', () => {
       sendReminderForMealType('晚餐後').catch(err => console.error('❌ 錯誤:', err));
